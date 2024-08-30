@@ -15,7 +15,7 @@ fn delimiters() -> &'static HashSet<&'static char> {
 }
 
 #[derive(Debug, Default)]
-pub struct Standard {}
+pub struct Standard;
 
 impl Standard {
     pub fn new() -> Self {
@@ -25,24 +25,10 @@ impl Standard {
 
 impl TextTokenizer for Standard {
     fn tokenize(&mut self, text: &str) -> Vec<String> {
-        let mut tokens = Vec::new();
-        let mut token = String::new();
-
-        for ch in text.chars() {
-            if !delimiters().contains(&ch) {
-                token.push(ch);
-            } else {
-                if !token.is_empty() {
-                    tokens.push(std::mem::take(&mut token));
-                }
-            }
-        }
-
-        if !token.is_empty() {
-            tokens.push(token);
-        }
-
-        tokens
+        text.split(|ch: char| delimiters().contains(&ch))
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect()
     }
 }
 
