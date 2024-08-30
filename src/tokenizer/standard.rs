@@ -1,13 +1,13 @@
 use std::{collections::HashSet, sync::OnceLock};
 
-use crate::tokenizer::TextTokenizer;
+use crate::tokenizer::{TextTokenizer, Token, Tokens};
 
 fn delimiters() -> &'static HashSet<&'static char> {
     static SET: OnceLock<HashSet<&char>> = OnceLock::new();
     SET.get_or_init(|| {
         [
             ' ', ',', ';', '!', '@', '#', '$', '%', '^', '.', '-', '(', ')', '{', '}', '[', ']',
-            '\'', '\'', '\"', '\"', '<', '>', '\t', '\r', '\n',
+            '\'', '\"', '<', '>', '\t', '\r', '\n',
         ]
         .iter()
         .collect::<HashSet<&char>>()
@@ -24,17 +24,21 @@ impl Standard {
 }
 
 impl TextTokenizer for Standard {
-    fn tokenize(&mut self, text: &str) -> Vec<String> {
-        text.split(|ch: char| delimiters().contains(&ch))
+    fn tokenize<T: AsRef<str>>(&mut self, text: T) -> Tokens {
+        text.as_ref()
+            .split(|ch: char| delimiters().contains(&ch))
             .filter(|s| !s.is_empty())
-            .map(String::from)
+            .map(Token::from)
             .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::tokenizer::{Standard, TextTokenizer};
+    use crate::{
+        tokenizer::{Standard, TextTokenizer, Token},
+        tokens,
+    };
 
     #[test]
     fn test_standard_basic() {
@@ -45,7 +49,7 @@ mod tests {
 
         assert_eq!(
             tokens,
-            vec!["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"]
+            tokens!("The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog")
         );
     }
 
@@ -56,7 +60,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec!["Hello", "world", "This", "is", "a", "test"]);
+        assert_eq!(tokens, tokens!["Hello", "world", "This", "is", "a", "test"]);
     }
 
     #[test]
@@ -66,7 +70,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec![] as Vec<&str>);
+        assert_eq!(tokens, tokens![]);
     }
 
     #[test]
@@ -76,7 +80,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec!["The", "quick", "brown", "fox"]);
+        assert_eq!(tokens, tokens!["The", "quick", "brown", "fox"]);
     }
 
     #[test]
@@ -86,7 +90,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec!["The", "quick", "brown", "fox"]);
+        assert_eq!(tokens, tokens!["The", "quick", "brown", "fox"]);
     }
 
     #[test]
@@ -96,7 +100,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec!["The", "quick", "brown", "fox"]);
+        assert_eq!(tokens, tokens!["The", "quick", "brown", "fox"]);
     }
 
     #[test]
@@ -106,7 +110,7 @@ mod tests {
         let mut tokenizer = Standard::new();
         let tokens = tokenizer.tokenize(&text);
 
-        assert_eq!(tokens, vec!["एकाधिक", "ಭಾಷೆಗಳು", "work"]);
+        assert_eq!(tokens, tokens!["एकाधिक", "ಭಾಷೆಗಳು", "work"]);
     }
 
     #[test]
@@ -118,7 +122,7 @@ mod tests {
 
         assert_eq!(
             tokens,
-            vec!["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog",]
+            tokens!["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog",]
         );
     }
 }
