@@ -1,4 +1,4 @@
-use crate::tokenizer::TextTokenizer;
+use crate::tokenizer::{TextTokenizer, Token, Tokens};
 
 #[derive(Debug, Default)]
 pub struct Whitespace;
@@ -10,23 +10,24 @@ impl Whitespace {
 }
 
 impl TextTokenizer for Whitespace {
-    fn tokenize(&mut self, text: &str) -> Vec<String> {
-        text.split_whitespace()
-            .map(|token| token.to_string())
-            .collect()
+    fn tokenize<T: AsRef<str>>(&mut self, text: T) -> Tokens {
+        text.as_ref().split_whitespace().map(Token::from).collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::tokenizer::{TextTokenizer, Whitespace};
+    use crate::{
+        tokenizer::{TextTokenizer, Token, Whitespace},
+        tokens,
+    };
 
     #[test]
     fn test_whitespace() {
         let mut tokenizer = Whitespace::new();
         let text = "This is a test";
         let tokens = tokenizer.tokenize(text);
-        assert_eq!(tokens, vec!["This", "is", "a", "test"]);
+        assert_eq!(tokens, tokens!["This", "is", "a", "test"]);
     }
 
     #[test]
@@ -42,7 +43,7 @@ mod tests {
         let mut tokenizer = Whitespace::new();
         let text = "This  is    a test";
         let tokens = tokenizer.tokenize(text);
-        assert_eq!(tokens, vec!["This", "is", "a", "test"]);
+        assert_eq!(tokens, tokens!["This", "is", "a", "test"]);
     }
 
     #[test]
@@ -50,7 +51,7 @@ mod tests {
         let mut tokenizer = Whitespace::new();
         let text = "   This is a test   ";
         let tokens = tokenizer.tokenize(text);
-        assert_eq!(tokens, vec!["This", "is", "a", "test"]);
+        assert_eq!(tokens, tokens!["This", "is", "a", "test"]);
     }
 
     #[test]
@@ -58,7 +59,7 @@ mod tests {
         let mut tokenizer = Whitespace::new();
         let text = "This is\u{00A0}a\u{3000}test";
         let tokens = tokenizer.tokenize(text);
-        assert_eq!(tokens, vec!["This", "is", "a", "test"]);
+        assert_eq!(tokens, tokens!["This", "is", "a", "test"]);
     }
 
     #[test]
