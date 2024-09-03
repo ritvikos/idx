@@ -1,47 +1,55 @@
-extern crate crossbeam;
+extern crate clap;
+extern crate crossbeam_channel;
 extern crate tokio;
 
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
-use crossbeam::queue::SegQueue;
-use tokio::{runtime::Runtime, sync::mpsc};
+use idx::cli::{Cli, ThreadCommand};
+
+use clap::Parser;
+use crossbeam_channel::unbounded;
+use tokio::runtime::Runtime;
 
 #[tokio::main]
 async fn main() {
-    let queue = Arc::new(SegQueue::<PathBuf>::new());
-    let (tx, mut rx) = mpsc::unbounded_channel();
-
-    {
-        let queue = queue.clone();
-
-        std::thread::spawn(move || {
-            let rt = Runtime::new().expect("Failed to create runtime in reader threads.");
-
-            rt.block_on(async move {
-                loop {
-                    while let Some(path) = queue.pop() {
-                        match tokio::fs::read_to_string(path).await {
-                            Ok(buffer) => {
-                                tx.send(buffer).unwrap();
-                            }
-                            Err(_) => todo!(),
-                        }
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                }
-            });
-        })
+    let cli = Cli::parse();
+    let thread = match cli.threads {
+        ThreadCommand::Thread(config) => config,
     };
 
-    std::thread::spawn(move || {
-        let rt = Runtime::new().expect("Failed to create runtime in processing threads.");
+    let (read_tx, read_rx) = unbounded();
+    let (index_tx, index_rx) = unbounded();
 
-        rt.block_on(async move {
-            loop {
-                while let Some(buffer) = rx.recv().await {
-                    println!("buffer: {buffer}");
-                }
+    {
+        (0..thread.read.get()).into_iter().for_each(|_| {
+            let index_tx = index_tx.clone();
+            let read_rx = read_rx.clone();
+
+            std::thread::spawn(move || {
+                let rt = Runtime::new().expect("Failed to create runtime in reader threads.");
+
+                rt.block_on(async move {
+                    loop {
+                        while let Ok(path) = read_rx.recv() {
+                            match tokio::fs::read_to_string(path).await {
+                                Ok(buffer) => {
+                                    index_tx.send(buffer).unwrap();
+                                }
+                                Err(_) => todo!(),
+                            }
+                        }
+                    }
+                });
+            });
+        });
+    };
+
+    (0..thread.index.get()).into_iter().for_each(|_| {
+        let rx = index_rx.clone();
+
+        std::thread::spawn(move || loop {
+            while let Ok(buffer) = rx.recv() {
+                println!("buffer: {buffer}");
             }
         });
     });
@@ -49,8 +57,11 @@ async fn main() {
     // Main thread will handle server.
     // Simulating server.
     loop {
-        queue.push(PathBuf::from("tests/data/sample.txt"));
-        std::thread::sleep(Duration::from_secs(2));
+        read_tx
+            .send(PathBuf::from("tests/data/sample.txt"))
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
