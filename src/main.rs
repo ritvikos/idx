@@ -31,7 +31,7 @@ async fn main() {
                 rt.block_on(async move {
                     loop {
                         while let Ok(path) = read_rx.recv() {
-                            match tokio::fs::read_to_string(path).await {
+                            match tokio::fs::read_to_string(&path).await {
                                 Ok(buffer) => {
                                     index_tx.send(buffer).unwrap();
                                 }

@@ -17,28 +17,12 @@ pub enum ThreadCommand {
 
 #[derive(Debug, Parser)]
 pub struct Thread {
-    #[arg(default_value_t = NonZeroUsize::new(2).unwrap(), long, short = 'r')]
+    #[arg(long, short = 'r')]
     pub read: NonZeroUsize,
 
-    #[arg(default_value_t = NonZeroUsize::new(2).unwrap(), long, short = 'i')]
+    #[arg(long, short = 'i')]
     pub index: NonZeroUsize,
 
-    #[arg(default_value_t = NonZeroUsize::new(2).unwrap(), long, short = 'w')]
+    #[arg(long, short = 'w')]
     pub write: NonZeroUsize,
-}
-
-impl Default for Thread {
-    fn default() -> Self {
-        Self {
-            read: NonZeroUsize::new(2).unwrap(),
-            index: NonZeroUsize::new(2).unwrap(),
-            write: NonZeroUsize::new(2).unwrap(),
-        }
-    }
-}
-
-impl Thread {
-    pub fn new() -> Self {
-        Self::default()
-    }
 }
