@@ -4,11 +4,14 @@ extern crate tokio;
 
 use std::{path::PathBuf, time::Duration};
 
-use idx::cli::{Cli, ThreadCommand};
+use idx::{
+    cli::{Cli, ThreadCommand},
+    document::{Document, Resource},
+};
 
 use clap::Parser;
 use crossbeam_channel::unbounded;
-use tokio::runtime::Runtime;
+use tokio::{fs::File, io::AsyncReadExt, runtime::Runtime};
 
 #[tokio::main]
 async fn main() {
@@ -27,16 +30,26 @@ async fn main() {
 
             std::thread::spawn(move || {
                 let rt = Runtime::new().expect("Failed to create runtime in reader threads.");
+                let mut buffer = Vec::with_capacity(100);
 
                 rt.block_on(async move {
                     loop {
                         while let Ok(path) = read_rx.recv() {
-                            match tokio::fs::read_to_string(&path).await {
-                                Ok(buffer) => {
-                                    index_tx.send(buffer).unwrap();
-                                }
+                            match File::open(&path).await {
+                                Ok(mut file) => match file.read_to_end(&mut buffer).await {
+                                    Ok(_) => {
+                                        let buffer = std::mem::take(&mut buffer);
+                                        let document = unsafe {
+                                            Document::from(String::from_utf8_unchecked(buffer))
+                                        };
+                                        let resource = Resource::new(document, path);
+                                        index_tx.send(resource).unwrap();
+                                    }
+                                    Err(_) => todo!(),
+                                },
                                 Err(_) => todo!(),
                             }
+                            // match
                         }
                     }
                 });
@@ -48,8 +61,8 @@ async fn main() {
         let rx = index_rx.clone();
 
         std::thread::spawn(move || loop {
-            while let Ok(buffer) = rx.recv() {
-                println!("buffer: {buffer}");
+            while let Ok(resource) = rx.recv() {
+                println!("resource: {resource:?}");
             }
         });
     });
