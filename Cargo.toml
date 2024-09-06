@@ -12,3 +12,4 @@ clap = { version = "4.5.16", features = ["derive"] }
 crossbeam-channel = "0.5.13"
 num-traits = "0.2.19"
 tokio = { version = "1.40.0", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "test-util"] }
+xxhash-rust = { version = "0.8.12", features = ["std", "xxh3"] }
