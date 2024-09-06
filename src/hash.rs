@@ -8,50 +8,53 @@ use std::{
 use xxhash_rust::xxh3::Xxh3;
 
 pub trait CustomHash: Hasher + Default {
-    /// Create a new instance.
     fn new() -> Self;
-
-    /// Perform hashing on the inner field.
-    fn hash_inner<K: Hash>(&mut self, key: K) -> u64;
+    fn hash_key<K: Hash + ?Sized>(&mut self, key: &K) -> u64;
+    fn reset(&mut self);
 }
 
-#[derive(Debug)]
-pub struct CustomHasher<T: CustomHash>(pub T);
+#[derive(Debug, Default)]
+pub struct CustomHasher<T: CustomHash = DefaultHasher>(pub T);
 
 impl<T: CustomHash> CustomHasher<T> {
-    pub fn new(hasher: T) -> Self {
-        Self(hasher)
+    pub fn new() -> Self {
+        Self(T::new())
     }
 
-    pub fn finalize(&mut self, key: &String) -> u64 {
-        self.0.hash_inner(key)
+    pub fn finalize<K: Hash + ?Sized>(&mut self, key: &K) -> u64 {
+        self.0.hash_key(key)
+    }
+
+    pub fn reset(&mut self) {
+        self.0.reset();
     }
 }
 
 #[derive(Default)]
 pub struct DefaultHasher {
-    inner: u64,
     hasher: Xxh3,
 }
 
 impl CustomHash for DefaultHasher {
     fn new() -> Self {
         Self {
-            inner: 0,
             hasher: Xxh3::new(),
         }
     }
 
-    fn hash_inner<K: Hash>(&mut self, key: K) -> u64 {
-        key.hash(&mut self.hasher);
-        self.inner = self.hasher.finish();
-        self.inner
+    fn hash_key<K: Hash + ?Sized>(&mut self, key: &K) -> u64 {
+        key.hash(self);
+        self.finish()
+    }
+
+    fn reset(&mut self) {
+        self.hasher.reset();
     }
 }
 
 impl Hasher for DefaultHasher {
     fn finish(&self) -> u64 {
-        self.inner
+        self.hasher.finish()
     }
 
     fn write(&mut self, bytes: &[u8]) {
@@ -62,23 +65,7 @@ impl Hasher for DefaultHasher {
 impl Debug for DefaultHasher {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DefaultHasher")
-            .field("inner", &self.inner)
             .field("hasher", &"<Hasher>")
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::hash::{CustomHasher, DefaultHasher};
-
-    #[test]
-    fn test_hasher_basic() {
-        let default = DefaultHasher::default();
-        let mut hasher = CustomHasher::new(default);
-
-        let key = String::from("sample");
-        let hash = hasher.finalize(&key);
-        println!("hash: {hash}");
     }
 }

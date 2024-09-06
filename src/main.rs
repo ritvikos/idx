@@ -6,7 +6,9 @@ use std::{path::PathBuf, time::Duration};
 
 use idx::{
     cli::{Cli, ThreadCommand},
-    document::{Document, Resource},
+    descriptor::{Descriptor, PathDescriptor},
+    document::Document,
+    hash::{CustomHasher, DefaultHasher},
 };
 
 use clap::Parser;
@@ -23,46 +25,51 @@ async fn main() {
     let (read_tx, read_rx) = unbounded();
     let (index_tx, index_rx) = unbounded();
 
-    {
-        (0..thread.read.get()).into_iter().for_each(|_| {
-            let index_tx = index_tx.clone();
-            let read_rx = read_rx.clone();
+    (0..thread.read.get()).into_iter().for_each(|_| {
+        let index_tx = index_tx.clone();
+        let read_rx = read_rx.clone();
 
-            std::thread::spawn(move || {
-                let rt = Runtime::new().expect("Failed to create runtime in reader threads.");
-                let mut buffer = Vec::with_capacity(100);
+        std::thread::spawn(move || {
+            let rt = Runtime::new().expect("Failed to create runtime in reader threads.");
+            let mut hasher = CustomHasher::<DefaultHasher>::new();
+            let mut buffer = Vec::with_capacity(100);
 
-                rt.block_on(async move {
-                    loop {
-                        while let Ok(path) = read_rx.recv() {
-                            match File::open(&path).await {
-                                Ok(mut file) => match file.read_to_end(&mut buffer).await {
-                                    Ok(_) => {
-                                        let buffer = std::mem::take(&mut buffer);
-                                        let document = unsafe {
-                                            Document::from(String::from_utf8_unchecked(buffer))
-                                        };
-                                        let resource = Resource::new(document, path);
-                                        index_tx.send(resource).unwrap();
-                                    }
-                                    Err(_) => todo!(),
-                                },
+            rt.block_on(async move {
+                loop {
+                    while let Ok(path) = read_rx.recv() {
+                        match File::open(&path).await {
+                            Ok(mut file) => match file.read_to_end(&mut buffer).await {
+                                Ok(_) => {
+                                    let buffer = std::mem::take(&mut buffer);
+                                    let document = unsafe {
+                                        Document::from(String::from_utf8_unchecked(buffer))
+                                    };
+
+                                    let hash = hasher.finalize(&path);
+                                    hasher.reset();
+
+                                    let path = PathDescriptor::new(PathBuf::from(&path), hash);
+                                    let resource = Descriptor::new(path, document);
+                                    index_tx.send(resource).unwrap();
+                                }
                                 Err(_) => todo!(),
-                            }
-                            // match
+                            },
+                            Err(_) => todo!(),
                         }
+                        // match
                     }
-                });
+                }
             });
         });
-    };
+    });
 
     (0..thread.index.get()).into_iter().for_each(|_| {
         let rx = index_rx.clone();
 
         std::thread::spawn(move || loop {
-            while let Ok(resource) = rx.recv() {
-                println!("resource: {resource:?}");
+            while let Ok(descriptor) = rx.recv() {
+                // println!("hash: {hash}");
+                println!("{descriptor:?}");
             }
         });
     });
@@ -70,12 +77,11 @@ async fn main() {
     // Main thread will handle server.
     // Simulating server.
     loop {
-        read_tx
-            .send(PathBuf::from("tests/data/sample.txt"))
-            .unwrap();
+        read_tx.send(String::from("tests/data/sample.txt")).unwrap();
 
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
 // TODO: Conditional Variable
+// TODO: Use shared memory, instead of mpsc channels.
