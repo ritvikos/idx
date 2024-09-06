@@ -1,20 +1,7 @@
 use std::{
     fmt::{Display, Formatter},
     ops::{Deref, DerefMut},
-    path::PathBuf,
 };
-
-#[derive(Debug)]
-pub struct Resource {
-    path: PathBuf,
-    document: Document,
-}
-
-impl Resource {
-    pub fn new(document: Document, path: PathBuf) -> Self {
-        Self { document, path }
-    }
-}
 
 #[derive(Debug)]
 pub struct Document(String);
