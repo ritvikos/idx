@@ -5,10 +5,11 @@ extern crate tokio;
 use std::{path::PathBuf, time::Duration};
 
 use idx::{
-    cli::{Cli, ThreadCommand},
+    cli::{Cli, TokenizerMode},
     descriptor::{Descriptor, PathDescriptor},
     document::Document,
     hash::{CustomHasher, DefaultHasher},
+    tokenizer::{Standard, Tokenizer, Whitespace},
 };
 
 use clap::Parser;
@@ -18,9 +19,7 @@ use tokio::{fs::File, io::AsyncReadExt, runtime::Runtime};
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    let thread = match cli.threads {
-        ThreadCommand::Thread(config) => config,
-    };
+    let thread = cli.thread;
 
     let (read_tx, read_rx) = unbounded();
     let (index_tx, index_rx) = unbounded();
@@ -65,11 +64,18 @@ async fn main() {
 
     (0..thread.index.get()).into_iter().for_each(|_| {
         let rx = index_rx.clone();
+        let mut tokenizer = match cli.tokenizer.mode {
+            TokenizerMode::Standard => Tokenizer::Standard(Standard::new()),
+            TokenizerMode::Whitespace => Tokenizer::Whitespace(Whitespace::new()),
+        };
 
         std::thread::spawn(move || loop {
-            while let Ok(descriptor) = rx.recv() {
+            while let Ok(mut descriptor) = rx.recv() {
+                let tokens = tokenizer.tokenize(descriptor.document_mut());
+                println!("tokens: {tokens:?}");
+
                 // println!("hash: {hash}");
-                println!("{descriptor:?}");
+                // println!("{descriptor:?}");
             }
         });
     });
@@ -84,4 +90,4 @@ async fn main() {
 }
 
 // TODO: Conditional Variable
-// TODO: Use shared memory, instead of mpsc channels.
+// TODO: Use shared memory, instead of channels.

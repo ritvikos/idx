@@ -1,7 +1,10 @@
 pub mod cli;
+pub mod descriptor;
 pub mod document;
 pub mod error;
 pub mod filter;
+pub mod hash;
+pub mod index;
 pub mod normalizer;
 pub mod read;
 pub mod tokenizer;
