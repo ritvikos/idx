@@ -3,12 +3,26 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::util::Counter;
 
 #[derive(Debug)]
+pub struct Index {
+    pub inverted_index: InvertedIndex,
+    pub file_index: FileIndex,
+}
+
+#[derive(Debug)]
+pub struct FileIndex {}
+
+#[derive(Debug)]
 pub struct InvertedIndex {
-    inner: HashMap<String, Rc<RefCell<IdfIndexEntry>>>,
+    // Key = Token Index
+    // Value = Index Entry
+    inner: HashMap<usize, Rc<RefCell<IdfIndexEntry>>>,
 }
 
 #[derive(Debug, Default)]
 pub struct IdfIndexEntry {
+    /// Token
+    token: String,
+
     /// Number of files that contain the term.
     file_count: Counter<usize>,
 
