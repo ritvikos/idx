@@ -2,28 +2,16 @@ use std::collections::HashSet;
 
 use crate::{normalizer::TextNormalizer, tokenizer::Tokens};
 
-#[macro_export]
-macro_rules! stopwords {
-    [$($word:expr),* $(,)?] => {{
-        static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-
-        SET.get_or_init(|| {
-            let words = [$($word),*];
-            words.iter().copied().collect::<HashSet<&str>>()
-        })
-    }};
-}
-
 #[derive(Debug)]
-pub struct Stopwords(HashSet<&'static str>);
+pub struct Stopwords(HashSet<String>);
 
 impl Stopwords {
-    pub fn new<const N: usize>(words: [&'static str; N]) -> Self {
-        let set = words.iter().copied().collect::<HashSet<_>>();
-        Self(set)
-    }
-
-    pub fn from_macro(set: HashSet<&'static str>) -> Self {
+    pub fn new<I, S>(words: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let set = words.into_iter().map(Into::into).collect::<HashSet<_>>();
         Self(set)
     }
 }
@@ -42,7 +30,6 @@ impl TextNormalizer for Stopwords {
 mod tests {
     use crate::{
         normalizer::{Stopwords, TextNormalizer},
-        tokenizer::Token,
         tokens,
     };
 
@@ -92,5 +79,32 @@ mod tests {
         normalizer.normalize(&mut tokens);
 
         assert_eq!(tokens, tokens!["école"]);
+    }
+
+    #[test]
+    fn test_normalizer_stopwords_dynamic() {
+        let mut stopwords = vec![
+            "i".to_string(),
+            "am".to_string(),
+            "are".to_string(),
+            "the".to_string(),
+        ];
+
+        let mut tokens = tokens![
+            "Are", "you", "excited", "about", "the", "new", "project", ",", "or", "am", "I", "the",
+            "only", "one", "who", "is", "?",
+        ];
+
+        stopwords.push("is".to_string());
+
+        let mut normalizer = Stopwords::new(&stopwords);
+        normalizer.normalize(&mut tokens);
+
+        assert_eq!(
+            tokens,
+            tokens![
+                "you", "excited", "about", "new", "project", ",", "or", "only", "one", "who", "?"
+            ]
+        )
     }
 }
