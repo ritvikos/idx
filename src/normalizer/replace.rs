@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+};
 
 use crate::{
     normalizer::TextNormalizer,
@@ -6,21 +9,38 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct TokenReplacer<'a> {
-    replacements: HashMap<&'a str, &'a str>,
+pub struct TokenReplacer<V>
+where
+    V: Clone + Debug + Display + Into<String>,
+{
+    pairs: HashMap<String, V>,
 }
 
-impl<'a> TokenReplacer<'a> {
-    pub fn new(replacements: HashMap<&'a str, &'a str>) -> Self {
-        Self { replacements }
+impl<V> TokenReplacer<V>
+where
+    V: Clone + Debug + Display + Into<String>,
+{
+    pub fn new(pairs: HashMap<String, V>) -> Self {
+        Self { pairs }
+    }
+
+    pub fn insert(&mut self, key: String, value: V) {
+        self.pairs.insert(key, value).unwrap();
+    }
+
+    pub fn remove(&mut self, key: &str) {
+        self.pairs.remove(key);
     }
 }
 
-impl<'a> TextNormalizer for TokenReplacer<'a> {
+impl<V> TextNormalizer for TokenReplacer<V>
+where
+    V: Clone + Debug + Display + Into<String>,
+{
     fn normalize(&mut self, tokens: &mut Tokens) {
         tokens.iter_mut().for_each(|token| {
-            if let Some(replacement) = self.replacements.get(token.as_str()) {
-                *token = Token::from(replacement);
+            if let Some(replacement) = self.pairs.get(token.inner()) {
+                *token = Token::from(replacement.to_string());
             }
         });
     }
@@ -40,13 +60,13 @@ mod tests {
         let mut tokens =
             tokens!["The", "lazy", "brown", "dog", "jumps", "over", "the", "quick", "fox"];
 
-        let mut replacements = HashMap::new();
-        replacements.insert("lazy", "quick");
-        replacements.insert("quick", "lazy");
-        replacements.insert("dog", "fox");
-        replacements.insert("fox", "dog");
+        let mut pairs = HashMap::new();
+        pairs.insert("lazy".into(), "quick");
+        pairs.insert("quick".into(), "lazy");
+        pairs.insert("dog".into(), "fox");
+        pairs.insert("fox".into(), "dog");
 
-        let mut normalizer = TokenReplacer::new(replacements);
+        let mut normalizer = TokenReplacer::new(pairs);
         normalizer.normalize(&mut tokens);
 
         assert_eq![
