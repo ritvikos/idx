@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
+    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -8,38 +9,42 @@ use crate::{
     tokenizer::{Token, Tokens},
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TokenReplacer<V>
 where
-    V: Clone + Debug + Display + Into<String>,
+    V: 'static + Clone + Debug + Display + Into<String> + Send + Sync,
 {
-    pairs: HashMap<String, V>,
+    pairs: Arc<RwLock<HashMap<String, V>>>,
 }
 
 impl<V> TokenReplacer<V>
 where
-    V: Clone + Debug + Display + Into<String>,
+    V: 'static + Clone + Debug + Display + Into<String> + Send + Sync,
 {
     pub fn new(pairs: HashMap<String, V>) -> Self {
-        Self { pairs }
+        Self {
+            pairs: Arc::new(RwLock::new(pairs)),
+        }
     }
 
     pub fn insert(&mut self, key: String, value: V) {
-        self.pairs.insert(key, value).unwrap();
+        let mut guard = self.pairs.write().unwrap();
+        guard.insert(key, value).unwrap();
     }
 
     pub fn remove(&mut self, key: &str) {
-        self.pairs.remove(key);
+        let mut guard = self.pairs.write().unwrap();
+        guard.remove(key);
     }
 }
 
 impl<V> TextNormalizer for TokenReplacer<V>
 where
-    V: Clone + Debug + Display + Into<String>,
+    V: 'static + Clone + Debug + Display + Into<String> + Send + Sync,
 {
     fn normalize(&mut self, tokens: &mut Tokens) {
         tokens.iter_mut().for_each(|token| {
-            if let Some(replacement) = self.pairs.get(token.inner()) {
+            if let Some(replacement) = self.pairs.read().unwrap().get(token.inner()) {
                 *token = Token::from(replacement.to_string());
             }
         });
