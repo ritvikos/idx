@@ -1,9 +1,12 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+};
 
 use crate::{normalizer::TextNormalizer, tokenizer::Tokens};
 
-#[derive(Debug)]
-pub struct Stopwords(HashSet<String>);
+#[derive(Clone, Debug)]
+pub struct Stopwords(Arc<RwLock<HashSet<String>>>);
 
 impl Stopwords {
     pub fn new<I, S>(words: I) -> Self
@@ -12,16 +15,22 @@ impl Stopwords {
         S: Into<String>,
     {
         let set = words.into_iter().map(Into::into).collect::<HashSet<_>>();
-        Self(set)
+        Self(Arc::new(RwLock::new(set)))
+    }
+
+    pub fn insert(&mut self, word: String) {
+        let mut guard = self.0.write().unwrap();
+        guard.insert(word);
     }
 }
 
 impl TextNormalizer for Stopwords {
     fn normalize(&mut self, tokens: &mut Tokens) {
+        let stopwords = self.0.read().unwrap();
         tokens.retain_mut(|token| {
             let token = token.as_mut();
             token.make_ascii_lowercase();
-            !self.0.contains(token)
+            !stopwords.contains(token)
         })
     }
 }
