@@ -1,31 +1,86 @@
 extern crate clap;
+extern crate serde;
+extern crate serde_json;
 
-use std::num::NonZeroUsize;
+use std::{collections::HashMap, num::NonZeroUsize};
 
-use clap::{ArgGroup, Parser, ValueEnum};
+use clap::Parser;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Parser)]
+use crate::error::{ConfigError, Error, IoError};
+
+#[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    #[command(flatten)]
-    pub thread: ThreadConfig,
+    // #[command(flatten)]
+    // pub thread: ThreadConfig,
 
-    #[command(flatten)]
-    pub tokenizer: TokenizerConfig,
+    // #[command(flatten)]
+    // pub tokenizer: TokenizerConfig,
+
+    // stopwords = txt / value
+    // stemming  =
+    // replacer  = json
+    // case      = value
+    // pub normalizer: PathBuf,
+    #[arg(long, value_name = "FILE")]
+    pub config: String,
 }
 
-#[derive(Debug, Parser)]
-#[command(group(
-    ArgGroup::new("thread").required(false).multiple(true),
-))]
+impl Cli {
+    pub fn init(&self) -> Result<Config, Error> {
+        self.validate(".json")?;
+        let buffer = self.read()?;
+        self.parse(&buffer)
+    }
+
+    fn validate(&self, extension: &str) -> Result<(), Error> {
+        if !self.config.ends_with(extension) {
+            return Err(Error::from(ConfigError::File(
+                std::io::ErrorKind::InvalidInput,
+            )));
+        }
+
+        if !std::path::Path::new(&self.config).exists() {
+            return Err(Error::from(ConfigError::File(std::io::ErrorKind::NotFound)));
+        }
+
+        Ok(())
+    }
+
+    fn read(&self) -> Result<String, Error> {
+        std::fs::read_to_string(&self.config)
+            .map_err(|error| Error::from(ConfigError::File(error.kind())))
+    }
+
+    fn parse(&self, buffer: &str) -> Result<Config, Error> {
+        serde_json::from_str(&buffer).map_err(|error| match error.io_error_kind() {
+            Some(io_err) => Error::from(IoError::Reader(io_err)),
+            None => Error::from(IoError::Reader(std::io::ErrorKind::Other)),
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Config {
+    pub thread: ThreadConfig,
+    pub tokenizer: TokenizerConfig,
+    pub normalizer: Vec<NormalizerConfig>,
+}
+
+// #[derive(Clone, Debug, Parser)]
+// #[command(group(
+//     ArgGroup::new("thread").required(false).multiple(true),
+// ))]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ThreadConfig {
-    #[arg(long = "thread-read", short = 'r', group = "thread")]
+    // #[arg(long = "thread-read", short = 'r', group = "thread")]
     pub read: NonZeroUsize,
 
-    #[arg(long = "thread-index", short = 'i', group = "thread")]
+    // #[arg(long = "thread-index", short = 'i', group = "thread")]
     pub index: NonZeroUsize,
 
-    #[arg(long = "thread-write", short = 'w', group = "thread")]
+    // #[arg(long = "thread-write", short = 'w', group = "thread")]
     pub write: NonZeroUsize,
 }
 
@@ -45,12 +100,13 @@ impl Default for ThreadConfig {
     }
 }
 
-#[derive(Debug, Default, Parser)]
-#[command(group(
-    ArgGroup::new("tokenizer").required(false).multiple(true),
-))]
+// #[derive(Clone, Debug, Default, Parser)]
+// #[command(group(
+// ArgGroup::new("tokenizer").required(false).multiple(true),
+// ))]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct TokenizerConfig {
-    #[arg(long = "tokenizer-mode", group = "tokenizer")]
+    // #[arg(long = "tokenizer-mode", group = "tokenizer")]
     pub mode: TokenizerMode,
 }
 
@@ -60,11 +116,70 @@ impl TokenizerConfig {
     }
 }
 
-#[derive(Debug, Default, Clone, ValueEnum)]
+// #[derive(Debug, Default, Clone, ValueEnum)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub enum TokenizerMode {
     #[default]
+    #[serde(rename = "standard")]
     Standard,
+
+    #[serde(rename = "whitespace")]
     Whitespace,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum NormalizerConfig {
+    #[serde(rename = "case")]
+    Case(CaseConfig),
+
+    #[serde(rename = "stopwords")]
+    Stopwords(StopwordsConfig),
+
+    #[serde(rename = "replacements")]
+    Replacer(ReplacerConfig),
+
+    #[serde(rename = "punctuation")]
+    Punctuation(bool),
+    // #[serde(rename = "stemmer")]
+    // Stemmer(StemmerConfig),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum CaseConfig {
+    #[serde(rename = "lowercase")]
+    Lowercase,
+
+    #[serde(rename = "uppercase")]
+    Uppercase,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StopwordsConfig {
+    pub file: Option<String>,
+    pub words: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ReplacerConfig {
+    pub file: Option<String>,
+    pub pairs: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StemmerConfig {}
+
+pub fn validate_file(file: &str, extension: &str) -> Result<(), Error> {
+    if !file.ends_with(extension) {
+        return Err(Error::from(ConfigError::File(
+            std::io::ErrorKind::InvalidInput,
+        )));
+    }
+
+    if !std::path::Path::new(file).exists() {
+        return Err(Error::from(ConfigError::File(std::io::ErrorKind::NotFound)));
+    }
+
+    Ok(())
 }
 
 // // TODO: Tokenizer Config
