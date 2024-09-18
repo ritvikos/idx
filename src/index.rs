@@ -60,6 +60,8 @@ pub struct Index {
 
 impl Index {
     pub fn new(capacity: usize, threshold: usize) -> Self {
+        // TODO: Ensure threshold is less than capacity.
+
         Self {
             file: FileIndex::with_capacity(capacity),
             inner: InvertedIndex::with_capacity(capacity),
@@ -68,25 +70,22 @@ impl Index {
         }
     }
 
-    pub fn insert(&mut self, term: String, path: String, word_count: usize) {
+    pub fn insert(&mut self, term: &str, path: &str, word_count: usize, word_frequency: usize) {
         // Add the file to the file index.
-        let entry = FileEntry::new(path, word_count);
+        let entry = FileEntry::new(path.into(), word_count);
         let index = self.file.insert(entry);
 
         // insert into inverted index.
 
-        // file index
-        // number of times, the term occurs in the file.
-        // let tf_entry = TfEntry::new(index);
+        // `index`: file index
+        // `freq`: number of times, the term occurs in the file.
+        let tf_entry = TfEntry::new(index, word_frequency);
 
-        // capacity
-        // threshold
-        let idf_entry = IdfEntry::with_capacity(self.capacity, self.threshold);
-
-        // self.inner.insert(term, )
+        self.inner.insert(term.into(), tf_entry);
     }
 }
 
+// TODO: Ensure that same files are not added more than once, maybe use another data structure.
 #[derive(Debug)]
 pub struct FileIndex {
     inner: Vec<FileEntry>,
@@ -157,14 +156,13 @@ impl InvertedIndex {
     }
 
     #[inline]
-    pub fn insert(&mut self, term: String, file_index: usize, frequency: usize) {
-        // self.inner.insert(term, entry);
-        self.inner.entry(term).and_modify(|entry| {
-            // IdfEntry is there
-
-            let tf_entry = TfEntry::new(file_index, frequency);
-            entry.insert(tf_entry);
-        });
+    pub fn insert(&mut self, term: String, tf_entry: TfEntry) {
+        self.inner
+            .entry(term)
+            .and_modify(|idf_entry| {
+                idf_entry.insert(tf_entry);
+            })
+            .or_default();
     }
 }
 
@@ -255,7 +253,7 @@ impl AppendCache {
 mod tests {
     use crate::index::{IdfEntry, TfEntry};
 
-    use super::InvertedIndex;
+    use super::{FileEntry, FileIndex, InvertedIndex};
 
     const INDEX_CAP: usize = 100;
     const CAPACITY: usize = 100;
@@ -263,7 +261,23 @@ mod tests {
 
     #[test]
     fn test_idx_api() {
+        // TODO:
+        // 1. Document and File Path
+        // 2. Insert in file index, get file_path_index
+        // 3. Tokenize
+        // 4. Normalize Pipeline
+        // 5. Descriptor (document and file path)
+
+        // for tokens/terms in document, insert to inverted index
+        // 6. Insert in inverted index
+
         let mut index = InvertedIndex::with_capacity(INDEX_CAP);
+        let mut file_index = FileIndex::with_capacity(INDEX_CAP);
+
+        // let file_path_index = file_index.insert(FileEntry::new(path, word_count));
+        // let mut tf_entry = TfEntry::new(file_path_index, frequency);
+
+        // index.insert(term, tf_entry);
 
         let total_doc = 100;
         let document = "he is good boy".to_string();
