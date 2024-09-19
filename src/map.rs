@@ -3,14 +3,14 @@ use std::{collections::HashMap, hash::Hash};
 use crate::util::Counter;
 
 #[derive(Debug, Default)]
-pub struct FrequencyMap<K>
+pub struct TermCounter<K>
 where
     K: Eq + Hash + Into<String>,
 {
     inner: HashMap<K, Counter<usize>>,
 }
 
-impl<K> FrequencyMap<K>
+impl<K> TermCounter<K>
 where
     K: Eq + Hash + Into<String>,
 {
@@ -41,11 +41,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{map::FrequencyMap, tokens, util::Counter};
+    use crate::{map::TermCounter, tokens, util::Counter};
 
     #[test]
     fn test_map_frequency_basic() {
-        let mut map = FrequencyMap::new();
+        let mut map = TermCounter::new();
 
         let tokens = tokens!["apple", "banana", "apple", "orange", "banana", "apple"];
 
