@@ -1,9 +1,15 @@
 use std::{
     collections::HashSet,
+    path::Path,
     sync::{Arc, RwLock},
 };
 
-use crate::{normalizer::TextNormalizer, tokenizer::Tokens};
+use crate::{
+    error::{ConfigError, Error},
+    normalizer::TextNormalizer,
+    read::FileReader,
+    tokenizer::Tokens,
+};
 
 #[derive(Clone, Debug)]
 pub struct Stopwords(Arc<RwLock<HashSet<String>>>);
@@ -16,6 +22,36 @@ impl Stopwords {
     {
         let set = words.into_iter().map(Into::into).collect::<HashSet<_>>();
         Self(Arc::new(RwLock::new(set)))
+    }
+
+    pub async fn load<P: AsRef<Path>>(path: &P) -> Result<Self, Error> {
+        let mut stopwords = Vec::new();
+
+        match FileReader::new().open(path.as_ref()).await {
+            Ok(reader) => match reader.read_lines().await {
+                Ok(mut lines) => {
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        if line.trim().split_whitespace().count() != 1 {
+                            return Err(Error::from(ConfigError::Tokenizer(format!(
+                                "Error in txt file. Invalid stopword {line}"
+                            ))));
+                        }
+
+                        stopwords.push(line);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("Error reading lines: {}", error);
+                    return Err(Error::from(ConfigError::File(std::io::ErrorKind::Other)));
+                }
+            },
+            Err(error) => {
+                eprintln!("Error reading lines: {}", error);
+                return Err(Error::from(ConfigError::Reader(std::io::ErrorKind::Other)));
+            }
+        };
+
+        Ok(Self::new(stopwords))
     }
 
     pub fn insert(&mut self, word: String) {
