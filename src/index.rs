@@ -43,7 +43,7 @@ total doc: -
 #[derive(Debug)]
 pub struct Index {
     // TODO: FilePathIndex?
-    // The FilePathIndex component is a memoryintensive component and is responsible for computing a file index from
+    // The FilePathIndex component is a memory intensive component and is responsible for computing a file index from
     // the full file path and storing the index and the full file path into the
     // inverted index in order to be retrieved during search operations. The
     // file content, under the form of a list of extracted tokens, is then indexed by the TFIDFIndex, which is also a memory-intensive component
@@ -72,14 +72,28 @@ impl Index {
 
     pub fn insert(&mut self, term: &str, path: &str, word_count: usize, word_frequency: usize) {
         // Add the file to the file index.
-        let entry = FileEntry::new(path.into(), word_count);
-        let index = self.file.insert(entry);
+        // let entry = FileEntry::new(path.into(), word_count);
+        // let index = self.file.insert(entry);
+        let index = self.insert_file(path, word_count);
 
         // insert into inverted index.
 
         // `index`: file index
         // `freq`: number of times, the term occurs in the file.
-        let tf_entry = TfEntry::new(index, word_frequency);
+        // let tf_entry = TfEntry::new(index, word_frequency);
+
+        // self.inner.insert(term.into(), tf_entry);
+        self.insert_entry(term, word_frequency, index);
+    }
+
+    fn insert_file(&mut self, path: &str, word_count: usize) -> usize {
+        let entry = FileEntry::new(path.into(), word_count);
+
+        self.file.insert(entry)
+    }
+
+    fn insert_entry(&mut self, term: &str, word_frequency: usize, file_index: usize) {
+        let tf_entry = TfEntry::new(file_index, word_frequency);
 
         self.inner.insert(term.into(), tf_entry);
     }

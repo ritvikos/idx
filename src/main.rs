@@ -10,7 +10,7 @@ use idx::{
     document::Document,
     hash::CustomHasher,
     index::Index,
-    map::FrequencyMap,
+    map::TermCounter,
     normalizer::{
         case::{Lowercase, Uppercase},
         punctuation::Punctuation,
@@ -199,7 +199,7 @@ async fn main() {
         let mut tokenizer = tokenizer.clone();
         let mut pipeline = pipeline.clone();
         let mut index = Index::new(INDEX_CAPACITY, THRESHOLD);
-        let mut frequencies = FrequencyMap::new();
+        let mut counter = TermCounter::new();
 
         std::thread::spawn(move || loop {
             while let Ok(mut descriptor) = rx.recv() {
@@ -208,10 +208,10 @@ async fn main() {
                 pipeline.run(&mut tokens);
 
                 for token in tokens {
-                    frequencies.insert(token);
+                    counter.insert(token);
                 }
 
-                println!("{frequencies:?}");
+                println!("{counter:?}");
                 // tokens.iter().for_each(|term| {
                 //     // Number of times term appear in document.
                 //     // let frequency =
@@ -221,7 +221,7 @@ async fn main() {
                 // });
 
                 // // println!("{descriptor:?}");
-                frequencies.reset();
+                counter.reset();
             }
         });
     });
