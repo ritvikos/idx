@@ -5,6 +5,7 @@ pub mod error;
 pub mod filter;
 pub mod hash;
 pub mod index;
+pub mod map;
 pub mod normalizer;
 pub mod read;
 pub mod tokenizer;

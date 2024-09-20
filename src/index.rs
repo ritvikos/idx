@@ -15,7 +15,21 @@
 // data file.
 // TFIDFIndex, segment data file contains a list of lists of TFIndexEntry elements of size IndexDepth
 
-use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, path::PathBuf, rc::Rc};
+extern crate hashbrown;
+
+use std::{borrow::Borrow, cell::RefCell, hash::Hash, num::NonZeroUsize};
+
+use hashbrown::{
+    hash_map::{Entry, HashMap},
+    hash_set::HashSet,
+};
+
+use crate::{
+    descriptor::Descriptor,
+    map::TermCounter,
+    normalizer::NormalizerPipeline,
+    tokenizer::{Token, Tokenizer},
+};
 
 /*
 TfIndexEntry -> TfEntry
@@ -41,7 +55,7 @@ total doc: -
 // TFIndexEntries if they don’t exist and update the frequency
 // information for each term-file pair.
 #[derive(Debug)]
-pub struct Index {
+pub struct Indexer {
     // TODO: FilePathIndex?
     // The FilePathIndex component is a memory intensive component and is responsible for computing a file index from
     // the full file path and storing the index and the full file path into the
@@ -56,10 +70,21 @@ pub struct Index {
     pub capacity: usize,
 
     pub threshold: usize,
+
+    pub tokenizer: Tokenizer,
+
+    pub pipeline: NormalizerPipeline,
+
+    pub counter: TermCounter<String>,
 }
 
-impl Index {
-    pub fn new(capacity: usize, threshold: usize) -> Self {
+impl Indexer {
+    pub fn new(
+        capacity: usize,
+        threshold: usize,
+        tokenizer: Tokenizer,
+        pipeline: NormalizerPipeline,
+    ) -> Self {
         // TODO: Ensure threshold is less than capacity.
 
         Self {
@@ -67,23 +92,44 @@ impl Index {
             inner: InvertedIndex::with_capacity(capacity),
             capacity,
             threshold,
+            tokenizer,
+            pipeline,
+            counter: TermCounter::new(),
         }
     }
 
-    pub fn insert(&mut self, term: &str, path: &str, word_count: usize, word_frequency: usize) {
-        // Add the file to the file index.
-        // let entry = FileEntry::new(path.into(), word_count);
-        // let index = self.file.insert(entry);
+    // `term_count`: Occurences of term in the document.
+    // `path`: Document path.
+    // `total_word_count`: Total words in document
+    pub fn insert(&mut self, descriptor: Descriptor) {
+        // Insert in file index.
+        let path = descriptor.path();
+        let word_count = descriptor.word_count();
         let index = self.insert_file(path, word_count);
 
-        // insert into inverted index.
+        let mut tokens = self.tokenizer.tokenize(descriptor.document().inner());
+        self.pipeline.run(&mut tokens);
 
         // `index`: file index
         // `freq`: number of times, the term occurs in the file.
         // let tf_entry = TfEntry::new(index, word_frequency);
 
-        // self.inner.insert(term.into(), tf_entry);
-        self.insert_entry(term, word_frequency, index);
+        // Insert in inverted index.
+
+        for token in tokens {
+            self.counter.insert(token.clone());
+
+            let word_frequency = self.word_frequency(&token);
+
+            // TODO: pass reference instead.
+            self.insert_entry(token.inner(), word_frequency, index);
+        }
+
+        self.counter.reset();
+    }
+
+    fn word_frequency(&self, token: &Token) -> usize {
+        **self.counter.get(token.as_ref()).unwrap()
     }
 
     fn insert_file(&mut self, path: &str, word_count: usize) -> usize {
@@ -92,10 +138,10 @@ impl Index {
         self.file.insert(entry)
     }
 
-    fn insert_entry(&mut self, term: &str, word_frequency: usize, file_index: usize) {
+    fn insert_entry(&mut self, term: String, word_frequency: usize, file_index: usize) {
         let tf_entry = TfEntry::new(file_index, word_frequency);
 
-        self.inner.insert(term.into(), tf_entry);
+        self.inner.insert(term, tf_entry);
     }
 }
 
@@ -151,6 +197,7 @@ impl FileEntry {
     }
 }
 
+// TODO: Handle threshold.
 #[derive(Debug)]
 pub struct InvertedIndex {
     inner: HashMap<String, IdfEntry>,
@@ -158,8 +205,8 @@ pub struct InvertedIndex {
 
 impl InvertedIndex {
     #[inline]
-    pub fn new() -> Self {
-        Self::with_capacity(1_000)
+    pub fn new(capacity: usize) -> Self {
+        Self::with_capacity(capacity)
     }
 
     #[inline]
@@ -171,12 +218,22 @@ impl InvertedIndex {
 
     #[inline]
     pub fn insert(&mut self, term: String, tf_entry: TfEntry) {
-        self.inner
-            .entry(term)
-            .and_modify(|idf_entry| {
-                idf_entry.insert(tf_entry);
-            })
-            .or_default();
+        match self.inner.entry(term) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().insert(RefEntry::new(tf_entry));
+            }
+            Entry::Vacant(entry) => {
+                // TODO: Track default capacity and threshold.
+
+                let mut set = HashSet::new();
+                set.insert(RefEntry::new(tf_entry));
+                entry.insert(IdfEntry { entries: set });
+
+                // let mut map = HashMap::new();
+                // map.insert(tf_entry.index, tf_entry.frequency);
+                // entry.insert(IdfEntry { entries: map });
+            }
+        }
     }
 }
 
@@ -193,18 +250,21 @@ pub struct IdfEntry {
     // - maybe the self.entries.len()
     //
     // file_count: Counter<usize>,
-    entries: Vec<TfEntry>,
-
+    // Index: Frequency
+    // TODO: Maybe, use better data structure for this use-case.
+    // entries: HashMap<usize, usize>,
+    entries: HashSet<RefEntry>,
+    // TODO: Remove threshold from IdfEntry and keep track somewhere else.
     // Limit after which the data will be flushed into the disk.
-    threshold: usize,
+    // threshold: usize,
 }
 
 impl IdfEntry {
     #[inline]
     pub fn with_capacity(capacity: usize, threshold: usize) -> Self {
         Self {
-            entries: Vec::with_capacity(capacity),
-            threshold,
+            // entries: HashMap::with_capacity(capacity),
+            entries: HashSet::with_capacity(capacity),
         }
     }
 
@@ -215,25 +275,66 @@ impl IdfEntry {
     }
 
     #[inline]
-    pub fn insert(&mut self, entry: TfEntry) {
-        self.entries.push(entry);
+    pub fn insert(&mut self, entry: RefEntry) {
+        // if self.entries.contains(&entry) {
+        //     if let Some(entry) = self.entries.get(&entry) {
+        //         entry.0.borrow_mut().frequency += 1;
+        //     }
+        // } else {
+        //     self.entries.insert(entry);
+        // }
+
+        if let Some(entry) = self.entries.get(&entry) {
+            entry.0.borrow_mut().frequency += 1;
+        }
+
+        self.entries.insert(entry);
+
+        // match self.entries.entry(entry.index) {
+        //     Entry::Occupied(mut frequency) => {
+        //         *frequency.get_mut() += 1;
+        //     }
+        //     Entry::Vacant(_) => {
+        //         self.entries.insert(entry.index, entry.frequency);
+        //     }
+        // }
     }
 
-    #[inline]
-    pub fn should_flush(&self) -> bool {
-        self.range() > self.threshold
-    }
+    // #[inline]
+    // pub fn should_flush(&self) -> bool {
+    //     self.range() > self.threshold
+    // }
 
-    #[inline]
-    fn range(&self) -> usize {
-        (self.entries.len() * 100) / self.entries.capacity()
+    // #[inline]
+    // fn range(&self) -> usize {
+    //     (self.entries.len() * 100) / self.entries.capacity()
+}
+
+#[derive(Clone, Debug, Eq)]
+pub struct RefEntry(RefCell<TfEntry>);
+
+impl RefEntry {
+    pub fn new(entry: TfEntry) -> Self {
+        Self(RefCell::new(entry))
+    }
+}
+
+impl Hash for RefEntry {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.borrow().hash(state);
+    }
+}
+
+impl PartialEq for RefEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.borrow().index == other.0.borrow().index
     }
 }
 
 // SCANNS
 // TFIndexEntry stores the index associated with
 // a file, the frequency of a term in that file
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, Debug, Eq)]
 pub struct TfEntry {
     /// Index associated with file.
     index: usize,
@@ -245,6 +346,18 @@ pub struct TfEntry {
 impl TfEntry {
     pub fn new(index: usize, frequency: usize) -> Self {
         Self { index, frequency }
+    }
+}
+
+impl Hash for TfEntry {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.index.hash(state)
+    }
+}
+
+impl PartialEq for TfEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
     }
 }
 
@@ -300,60 +413,60 @@ mod tests {
         // index.insert(term, )
     }
 
-    #[test]
-    fn test_index_idf_entry_basic() {
-        let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        assert_eq!(idf.entries.capacity(), 100);
-        // assert_eq!(*idf.file_count, 0);
-        assert_eq!(idf.entries.len(), 0);
-        assert_eq!(idf.threshold, 0);
-    }
-
     // #[test]
-    // fn test_index_idf_entry_with_file_count() {
-    //     let idf = IdfEntry::new(100).with_file_count(Counter::new(5));
-    //     assert_eq!(*idf.file_count, 5);
+    // fn test_index_idf_entry_basic() {
+    //     let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     assert_eq!(idf.entries.capacity(), 100);
+    //     // assert_eq!(*idf.file_count, 0);
+    //     assert_eq!(idf.entries.len(), 0);
+    //     assert_eq!(idf.threshold, 0);
     // }
 
-    #[test]
-    fn test_index_idf_entry_with_limit() {
-        let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        assert_eq!(idf.threshold, 80);
-    }
+    // // #[test]
+    // // fn test_index_idf_entry_with_file_count() {
+    // //     let idf = IdfEntry::new(100).with_file_count(Counter::new(5));
+    // //     assert_eq!(*idf.file_count, 5);
+    // // }
 
-    #[test]
-    fn test_index_idf_entry_insert() {
-        let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        idf.insert(TfEntry::new(1, 3));
-        assert_eq!(idf.entries.len(), 1);
-        assert_eq!(idf.entries[0].index, 1);
-        assert_eq!(idf.entries[0].frequency, 3);
-    }
+    // #[test]
+    // fn test_index_idf_entry_with_limit() {
+    //     let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     assert_eq!(idf.threshold, 80);
+    // }
 
-    #[test]
-    fn test_index_idf_entry_should_flush() {
-        let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        (1..=81).for_each(|_| {
-            idf.insert(TfEntry::default());
-        });
-        assert!(idf.should_flush());
-    }
+    // #[test]
+    // fn test_index_idf_entry_insert() {
+    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     idf.insert(TfEntry::new(1, 3));
+    //     assert_eq!(idf.entries.len(), 1);
+    //     assert_eq!(idf.entries[0].index, 1);
+    //     assert_eq!(idf.entries[0].frequency, 3);
+    // }
 
-    #[test]
-    fn test_index_idf_entry_should_not_flush() {
-        let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        (1..=80).for_each(|_| {
-            idf.insert(TfEntry::default());
-        });
-        assert!(!idf.should_flush());
-    }
+    // #[test]
+    // fn test_index_idf_entry_should_flush() {
+    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     (1..=81).for_each(|_| {
+    //         idf.insert(TfEntry::default());
+    //     });
+    //     assert!(idf.should_flush());
+    // }
 
-    #[test]
-    fn test_index_idf_entry_range_calculation() {
-        let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-        (1..=50).for_each(|_| {
-            idf.insert(TfEntry::default());
-        });
-        assert_eq!(idf.range(), 50);
-    }
+    // #[test]
+    // fn test_index_idf_entry_should_not_flush() {
+    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     (1..=80).for_each(|_| {
+    //         idf.insert(TfEntry::default());
+    //     });
+    //     assert!(!idf.should_flush());
+    // }
+
+    // #[test]
+    // fn test_index_idf_entry_range_calculation() {
+    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
+    //     (1..=50).for_each(|_| {
+    //         idf.insert(TfEntry::default());
+    //     });
+    //     assert_eq!(idf.range(), 50);
+    // }
 }

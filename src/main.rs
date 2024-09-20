@@ -9,15 +9,13 @@ use idx::{
     descriptor::Descriptor,
     document::Document,
     hash::CustomHasher,
-    index::Index,
-    map::TermCounter,
+    index::Indexer,
     normalizer::{
         case::{Lowercase, Uppercase},
         punctuation::Punctuation,
         replace::TokenReplacer,
         NormalizerPipeline, Stopwords,
     },
-    read::FileReader,
     tokenizer::{Standard, Tokenizer, Whitespace},
 };
 
@@ -26,7 +24,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use tokio::{fs::File, io::AsyncReadExt, runtime::Runtime};
 
 const INDEX_CAPACITY: usize = 100;
-const THRESHOLD: usize = 80;
+const THRESHOLD_CAPACITY: usize = 80;
 
 #[derive(Clone, Debug)]
 struct Channel {
@@ -91,24 +89,11 @@ async fn main() {
                         panic!("{error:?}");
                     };
 
-                    let mut stopwords = Vec::new();
-
-                    // TODO: Cleanup
-                    match FileReader::new().open(&path).await {
-                        Ok(reader) => match reader.read_lines().await {
-                            Ok(mut lines) => {
-                                while let Ok(Some(word)) = lines.next_line().await {
-                                    if !word.is_empty() {
-                                        stopwords.push(word);
-                                    }
-                                }
-                            }
-                            Err(e) => eprintln!("Error reading lines: {}", e),
-                        },
+                    match Stopwords::load(&path).await {
+                        Ok(stopwords) => pipeline.insert(Box::new(stopwords)),
                         Err(error) => panic!("{error:?}"),
                     };
 
-                    pipeline.insert(Box::new(Stopwords::new(stopwords)));
                     continue;
                 };
 
@@ -196,32 +181,18 @@ async fn main() {
 
     (0..thread_config.index.get()).for_each(|_| {
         let rx = index_rx.clone();
-        let mut tokenizer = tokenizer.clone();
-        let mut pipeline = pipeline.clone();
-        let mut index = Index::new(INDEX_CAPACITY, THRESHOLD);
-        let mut counter = TermCounter::new();
+
+        let mut indexer = Indexer::new(
+            INDEX_CAPACITY,
+            THRESHOLD_CAPACITY,
+            tokenizer.clone(),
+            pipeline.clone(),
+        );
 
         std::thread::spawn(move || loop {
-            while let Ok(mut descriptor) = rx.recv() {
-                let word_count = descriptor.word_count();
-                let mut tokens = tokenizer.tokenize(descriptor.document_mut());
-                pipeline.run(&mut tokens);
-
-                for token in tokens {
-                    counter.insert(token);
-                }
-
-                println!("{counter:?}");
-                // tokens.iter().for_each(|term| {
-                //     // Number of times term appear in document.
-                //     // let frequency =
-                //     // frequencies.insert(term);
-
-                //     index.insert(term, descriptor.path(), frequency);
-                // });
-
-                // // println!("{descriptor:?}");
-                counter.reset();
+            while let Ok(descriptor) = rx.recv() {
+                indexer.insert(descriptor);
+                println!("{indexer:#?}");
             }
         });
     });
@@ -230,6 +201,10 @@ async fn main() {
     // // Simulating server.
     loop {
         read_tx.send(String::from("tests/data/sample.txt")).unwrap();
+        read_tx
+            .send(String::from("tests/data/sample2.txt"))
+            .unwrap();
+
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
