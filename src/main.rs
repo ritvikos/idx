@@ -20,18 +20,11 @@ use idx::{
 };
 
 use clap::Parser;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::unbounded;
 use tokio::{fs::File, io::AsyncReadExt, runtime::Runtime};
 
 const INDEX_CAPACITY: usize = 100;
 const THRESHOLD_CAPACITY: usize = 80;
-
-#[derive(Clone, Debug)]
-struct Channel {
-    read: (Sender<String>, Receiver<String>),
-    index: (Sender<Descriptor>, Receiver<Descriptor>),
-    write: (Sender<String>, Receiver<String>),
-}
 
 #[derive(Clone, Debug)]
 struct Engine {}
@@ -46,23 +39,19 @@ impl Engine {
         Descriptor::new(path, document)
     }
 
-    pub fn index(&self) {}
-
     fn document(&self, buffer: &mut Vec<u8>) -> Document {
         let buffer = std::mem::take(buffer);
         unsafe { Document::from(String::from_utf8_unchecked(buffer)) }
     }
-
-    fn hash(&self, hasher: &mut CustomHasher, path: &str) -> u64 {
-        hasher.reset();
-        hasher.finalize(path)
-    }
 }
 
+// TODO: Create high level API.
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
     let config = cli.init().unwrap();
+    let thread_config = config.thread;
 
     let engine = Engine::new();
     let mut pipeline = NormalizerPipeline::new();
@@ -137,15 +126,6 @@ async fn main() {
     }
 
     println!("{pipeline:#?}");
-
-    let thread_config = config.thread;
-
-    // -- WIP --
-    // handle queues here
-    // spawn threads for reading.
-    // engine.read(file: String, buffer: &mut String);
-    // engine.index(tokenizer: &mut Tokenizer)
-    // engine.write()
 
     let (read_tx, read_rx) = unbounded();
     let (index_tx, index_rx) = unbounded();

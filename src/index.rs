@@ -17,12 +17,9 @@
 
 extern crate hashbrown;
 
-use std::{borrow::Borrow, cell::RefCell, hash::Hash, num::NonZeroUsize};
+use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
 
-use hashbrown::{
-    hash_map::{Entry, HashMap},
-    hash_set::HashSet,
-};
+use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
 use crate::{
     descriptor::Descriptor,
@@ -32,13 +29,6 @@ use crate::{
 };
 
 /*
-TfIndexEntry -> TfEntry
-IDFIndexEntry -> IdfEntry
-*/
-
-/*
-file -> tokens -> token | inverted_index
-
 TF:
 file_index: -
 frequency: -
@@ -48,15 +38,12 @@ no of doc containing the term: -
 total doc: -
 */
 
-// use crate::util::Counter;
-
-// During indexing, the Indexer will perform
-// lookups in the hash table and create new IDFIndexEntries or
-// TFIndexEntries if they don’t exist and update the frequency
-// information for each term-file pair.
+// TODO: Fix 8 bytes wasted (padding and alignment), due to tokenizer.
+/// Indexer
+/// The current strategy utilizes a single-threaded, thread-local indexer
+/// and perform a merge operation to generate a global index view.
 #[derive(Debug)]
 pub struct Indexer {
-    // TODO: FilePathIndex?
     // The FilePathIndex component is a memory intensive component and is responsible for computing a file index from
     // the full file path and storing the index and the full file path into the
     // inverted index in order to be retrieved during search operations. The
@@ -102,12 +89,13 @@ impl Indexer {
     // `path`: Document path.
     // `total_word_count`: Total words in document
     pub fn insert(&mut self, descriptor: Descriptor) {
+        let mut tokens = descriptor.tokenize(&mut self.tokenizer);
+
         // Insert in file index.
         let path = descriptor.path();
-        let word_count = descriptor.word_count();
+        let word_count = tokens.len();
         let index = self.insert_file(path, word_count);
 
-        let mut tokens = self.tokenizer.tokenize(descriptor.document().inner());
         self.pipeline.run(&mut tokens);
 
         // `index`: file index
@@ -115,14 +103,11 @@ impl Indexer {
         // let tf_entry = TfEntry::new(index, word_frequency);
 
         // Insert in inverted index.
-
         for token in tokens {
             self.counter.insert(token.clone());
 
-            let word_frequency = self.word_frequency(&token);
-
             // TODO: pass reference instead.
-            self.insert_entry(token.inner(), word_frequency, index);
+            self.insert_entry(token, index);
         }
 
         self.counter.reset();
@@ -134,14 +119,14 @@ impl Indexer {
 
     fn insert_file(&mut self, path: &str, word_count: usize) -> usize {
         let entry = FileEntry::new(path.into(), word_count);
-
         self.file.insert(entry)
     }
 
-    fn insert_entry(&mut self, term: String, word_frequency: usize, file_index: usize) {
+    fn insert_entry(&mut self, token: Token, file_index: usize) {
+        let word_frequency = self.word_frequency(&token);
         let tf_entry = TfEntry::new(file_index, word_frequency);
 
-        self.inner.insert(term, tf_entry);
+        self.inner.insert(token.inner(), tf_entry);
     }
 }
 
@@ -218,22 +203,15 @@ impl InvertedIndex {
 
     #[inline]
     pub fn insert(&mut self, term: String, tf_entry: TfEntry) {
-        match self.inner.entry(term) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().insert(RefEntry::new(tf_entry));
-            }
-            Entry::Vacant(entry) => {
-                // TODO: Track default capacity and threshold.
-
+        // TODO: Track default capacity and threshold.
+        self.inner
+            .entry_ref(&term)
+            .and_modify(|entry| entry.insert(RefEntry::new(tf_entry)))
+            .or_insert_with(|| {
                 let mut set = HashSet::new();
                 set.insert(RefEntry::new(tf_entry));
-                entry.insert(IdfEntry { entries: set });
-
-                // let mut map = HashMap::new();
-                // map.insert(tf_entry.index, tf_entry.frequency);
-                // entry.insert(IdfEntry { entries: map });
-            }
-        }
+                IdfEntry { entries: set }
+            });
     }
 }
 
@@ -242,28 +220,16 @@ impl InvertedIndex {
 // the number of files that contain the term,
 #[derive(Debug, Default)]
 pub struct IdfEntry {
-    // Token
-    // - maybe the key
-    // token: String,
-
-    // Number of files that contain the term.
-    // - maybe the self.entries.len()
-    //
-    // file_count: Counter<usize>,
-    // Index: Frequency
-    // TODO: Maybe, use better data structure for this use-case.
-    // entries: HashMap<usize, usize>,
+    // TODO:
+    // - Maybe use better data structure for this use-case.
+    // - Track `threshold` for `IdfEntry` somewhere else.
     entries: HashSet<RefEntry>,
-    // TODO: Remove threshold from IdfEntry and keep track somewhere else.
-    // Limit after which the data will be flushed into the disk.
-    // threshold: usize,
 }
 
 impl IdfEntry {
     #[inline]
     pub fn with_capacity(capacity: usize, threshold: usize) -> Self {
         Self {
-            // entries: HashMap::with_capacity(capacity),
             entries: HashSet::with_capacity(capacity),
         }
     }
@@ -276,28 +242,11 @@ impl IdfEntry {
 
     #[inline]
     pub fn insert(&mut self, entry: RefEntry) {
-        // if self.entries.contains(&entry) {
-        //     if let Some(entry) = self.entries.get(&entry) {
-        //         entry.0.borrow_mut().frequency += 1;
-        //     }
-        // } else {
-        //     self.entries.insert(entry);
-        // }
-
         if let Some(entry) = self.entries.get(&entry) {
             entry.0.borrow_mut().frequency += 1;
         }
 
         self.entries.insert(entry);
-
-        // match self.entries.entry(entry.index) {
-        //     Entry::Occupied(mut frequency) => {
-        //         *frequency.get_mut() += 1;
-        //     }
-        //     Entry::Vacant(_) => {
-        //         self.entries.insert(entry.index, entry.frequency);
-        //     }
-        // }
     }
 
     // #[inline]
