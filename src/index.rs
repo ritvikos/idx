@@ -96,6 +96,8 @@ impl Indexer {
         let word_count = tokens.len();
         let index = self.insert_file(path, word_count);
 
+        // self.inner.insert_into_file_index(path, word_count);
+
         self.pipeline.run(&mut tokens);
 
         // `index`: file index
@@ -107,7 +109,7 @@ impl Indexer {
             self.counter.insert(token.clone());
 
             // TODO: pass reference instead.
-            self.insert_entry(token, index);
+            let key_ref = self.insert_entry(token, index);
         }
 
         self.counter.reset();
@@ -117,16 +119,57 @@ impl Indexer {
         **self.counter.get(token.as_ref()).unwrap()
     }
 
-    fn insert_file(&mut self, path: &str, word_count: usize) -> usize {
+    fn insert_file<S: Into<String>>(&mut self, path: S, word_count: usize) -> usize {
         let entry = FileEntry::new(path.into(), word_count);
         self.file.insert(entry)
     }
 
-    fn insert_entry(&mut self, token: Token, file_index: usize) {
+    fn insert_entry(&mut self, token: Token, file_index: usize) -> &str {
         let word_frequency = self.word_frequency(&token);
         let tf_entry = TfEntry::new(file_index, word_frequency);
 
-        self.inner.insert(token.inner(), tf_entry);
+        return self.inner.insert(token.inner(), tf_entry);
+    }
+}
+
+pub struct CoreIndexer {
+    store: FileIndex,
+    index: InvertedIndex,
+    pub count: TermCounter<String>,
+}
+
+impl CoreIndexer {
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            store: FileIndex::with_capacity(capacity),
+            index: InvertedIndex::with_capacity(capacity),
+            count: TermCounter::new(),
+        }
+    }
+
+    fn insert(&mut self, descriptor: &Descriptor, tokenizer: &mut Tokenizer) {
+        let mut tokens = descriptor.tokenize(tokenizer);
+
+        // Insert in file index.
+        let path = descriptor.path();
+        let word_count = tokens.len();
+        let index = self.insert_into_store(path, word_count);
+    }
+
+    pub fn insert_into_store<S: Into<String>>(&mut self, path: S, word_count: usize) -> usize {
+        let entry = FileEntry::new(path.into(), word_count);
+        self.store.insert(entry)
+    }
+
+    pub fn insert_into_index<S: Into<String>>(&mut self, term: S, index: usize) {
+        let term = term.into();
+
+        let word_frequency = **self.count.get(&term).unwrap();
+        let entry = TfEntry::new(index, word_frequency);
+
+        self.index.insert(term.into(), entry);
+        self.count.reset();
     }
 }
 
@@ -170,9 +213,9 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub fn new(path: String, word_count: usize) -> Self {
+    pub fn new<S: Into<String>>(path: S, word_count: usize) -> Self {
         Self {
-            path,
+            path: path.into(),
 
             // SAFETY:
             // - The value must not be zero.
@@ -202,16 +245,36 @@ impl InvertedIndex {
     }
 
     #[inline]
-    pub fn insert(&mut self, term: String, tf_entry: TfEntry) {
+    pub fn insert(&mut self, term: String, tf_entry: TfEntry) -> &str {
         // TODO: Track default capacity and threshold.
-        self.inner
-            .entry_ref(&term)
-            .and_modify(|entry| entry.insert(RefEntry::new(tf_entry)))
+        // self.inner
+        //     .entry_ref(&term)
+        //     .and_modify(|entry| entry.insert(RefEntry::new(tf_entry)))
+        //     .or_insert_with(|| {
+        //         let mut set = HashSet::new();
+        //         set.insert(RefEntry::new(tf_entry));
+        //         IdfEntry { entries: set }
+        //     });
+
+        // let x = self.inner
+        // .raw_entry().from_key(&term).unwrap();
+
+        let (k, _) = self
+            .inner
+            .raw_entry_mut()
+            .from_key(&term)
+            .and_modify(|_, entry| {
+                entry.insert(RefEntry::new(tf_entry));
+            })
             .or_insert_with(|| {
                 let mut set = HashSet::new();
                 set.insert(RefEntry::new(tf_entry));
-                IdfEntry { entries: set }
+                (term, IdfEntry { entries: set })
             });
+
+        // let key_ref = k.as_str();
+        // key_ref
+        k.as_str()
     }
 }
 
