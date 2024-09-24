@@ -60,6 +60,14 @@ impl TermCounter {
             .and_then(|counter| Some(counter.inner_ref()))
     }
 
+    /// SAFETY: The caller ensures that atleast one term is present in the counter.
+    //
+    /// # Panics
+    /// If the no term exists.
+    pub unsafe fn get_unchecked(&self, key: &str) -> usize {
+        *self.get_ref(&key).unwrap()
+    }
+
     pub fn reset(&mut self) {
         self.inner.clear();
     }

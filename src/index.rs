@@ -118,8 +118,6 @@ impl Indexer {
         //     self.insert_entry(token.to_string(), index);
         // }
 
-        // let index = self.core.insert_into_store(path.clone(), word_count);
-
         for token in tokens.iter() {
             self.core.insert_into_counter(token.to_string());
             self.core.insert_into_index(token.to_string(), index);
@@ -188,9 +186,8 @@ impl CoreIndexer {
 
     pub fn insert_into_index<S: Into<String>>(&mut self, term: S, index: usize) {
         let term = term.into();
-        // self.count.insert(term.to_string());
 
-        let word_frequency = **self.count.get(&term).unwrap();
+        let word_frequency = unsafe { self.count.get_unchecked(&term) };
         let entry = TfEntry::new(index, word_frequency);
 
         self.index.insert(term.to_string(), entry);
