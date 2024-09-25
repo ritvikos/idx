@@ -50,10 +50,6 @@ pub struct Indexer {
     // file content, under the form of a list of extracted tokens, is then indexed by the TFIDFIndex, which is also a memory-intensive component
     // and that indexes the tokens and keeps track of the term frequencies
     // and inverse document frequencies necessary for computing the relevance score.
-    pub file: FileIndex,
-
-    pub inner: InvertedIndex,
-
     pub core: CoreIndexer,
 
     pub capacity: usize,
@@ -63,9 +59,6 @@ pub struct Indexer {
     pub tokenizer: Tokenizer,
 
     pub pipeline: NormalizerPipeline,
-
-    // pub counter: TermCounter<String>,
-    pub counter: TermCounter,
 }
 
 impl Indexer {
@@ -78,14 +71,11 @@ impl Indexer {
         // TODO: Ensure threshold is less than capacity.
 
         Self {
-            file: FileIndex::with_capacity(capacity),
-            inner: InvertedIndex::with_capacity(capacity),
+            core: CoreIndexer::with_capacity(capacity),
             capacity,
             threshold,
             tokenizer,
             pipeline,
-            counter: TermCounter::new(),
-            core: CoreIndexer::with_capacity(capacity),
         }
     }
 
@@ -98,49 +88,16 @@ impl Indexer {
         // Insert in file index.
         let path = descriptor.path();
         let word_count = tokens.len();
-
-        // let index = self.insert_file(path, word_count);
-        let index = self.core.insert_into_store(path, word_count);
-
-        // self.inner.insert_into_file_index(path, word_count);
+        let index = self.core.create_and_insert_file_entry(path, word_count);
 
         self.pipeline.run(&mut tokens);
 
-        // `index`: file index
-        // `freq`: number of times, the term occurs in the file.
-        // let tf_entry = TfEntry::new(index, word_frequency);
+        tokens.iter().for_each(|token| {
+            self.core
+                .create_and_insert_tf_entry(token.to_string(), index);
+        });
 
-        // Insert in inverted index.
-        // for token in tokens.iter() {
-        //     let o = self.counter.insert(token.to_string());
-
-        //     // TODO: pass reference instead.
-        //     self.insert_entry(token.to_string(), index);
-        // }
-
-        for token in tokens.iter() {
-            self.core.insert_into_counter(token.to_string());
-            self.core.insert_into_index(token.to_string(), index);
-        }
-
-        self.core.reset_counter();
-        // self.counter.reset();
-    }
-
-    fn word_frequency(&self, token: &str) -> usize {
-        **self.counter.get(token).unwrap()
-    }
-
-    fn insert_file<S: Into<String>>(&mut self, path: S, word_count: usize) -> usize {
-        let entry = FileEntry::new(path.into(), word_count);
-        self.file.insert(entry)
-    }
-
-    fn insert_entry(&mut self, token: String, file_index: usize) {
-        let word_frequency = self.word_frequency(&token);
-        let tf_entry = TfEntry::new(file_index, word_frequency);
-
-        self.inner.insert(token, tf_entry);
+        self.core.reset_term_counter();
     }
 }
 
@@ -149,7 +106,6 @@ pub struct CoreIndexer {
     store: FileIndex,
     index: InvertedIndex,
     count: TermCounter,
-    // count: TermCounter<String>,
 }
 
 impl CoreIndexer {
@@ -162,35 +118,48 @@ impl CoreIndexer {
         }
     }
 
-    // fn insert(&mut self, descriptor: &Descriptor, tokenizer: &mut Tokenizer) {
-    //     let mut tokens = descriptor.tokenize(tokenizer);
-
-    //     // Insert in file index.
-    //     let path = descriptor.path();
-    //     let word_count = tokens.len();
-    //     let index = self.insert_into_store(path, word_count);
-    // }
-
-    pub fn insert_into_store<S: Into<String>>(&mut self, path: S, word_count: usize) -> usize {
+    pub fn create_and_insert_file_entry<S: Into<String>>(
+        &mut self,
+        path: S,
+        word_count: usize,
+    ) -> usize {
         let entry = FileEntry::new(path.into(), word_count);
+        self.insert_file_entry(entry)
+    }
+
+    fn insert_file_entry(&mut self, entry: FileEntry) -> usize {
         self.store.insert(entry)
     }
 
-    pub fn insert_into_counter<S: Into<String>>(&mut self, term: S) {
+    pub fn create_and_insert_tf_entry<S: Into<String>>(&mut self, term: S, index: usize) {
+        let term: String = term.into();
+
+        self.insert_term(term.clone());
+        let word_frequency = unsafe { self.get_word_frequency_unchecked(&term) };
+        let entry = TfEntry::new(index, word_frequency);
+
+        self.insert_tf_entry(term.to_string(), entry);
+    }
+
+    fn insert_term<S: Into<String>>(&mut self, term: S) {
         self.count.insert(term.into());
     }
 
-    pub fn reset_counter(&mut self) {
-        self.count.reset()
+    fn get_word_frequency(&self, term: &str) -> Option<&usize> {
+        self.count.get_ref(term)
     }
 
-    pub fn insert_into_index<S: Into<String>>(&mut self, term: S, index: usize) {
-        let term = term.into();
+    /// SAFETY: The caller ensures that the counter is not zero, at one term is inserted.
+    unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
+        unsafe { self.count.get_unchecked(term) }
+    }
 
-        let word_frequency = unsafe { self.count.get_unchecked(&term) };
-        let entry = TfEntry::new(index, word_frequency);
+    fn insert_tf_entry(&mut self, term: String, entry: TfEntry) {
+        self.index.insert(term, entry);
+    }
 
-        self.index.insert(term.to_string(), entry);
+    pub fn reset_term_counter(&mut self) {
+        self.count.reset()
     }
 }
 
