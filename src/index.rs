@@ -17,7 +17,7 @@
 
 extern crate hashbrown;
 
-use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
+use std::{cell::RefCell, hash::Hash, intrinsics::drop_in_place, mem, num::NonZeroUsize};
 
 use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
@@ -38,8 +38,14 @@ no of doc containing the term: -
 total doc: -
 */
 
-// TODO: Fix 8 bytes wasted (padding and alignment), due to tokenizer.
-/// Indexer
+// TODO: Fix 7 bytes wasted (padding and alignment), due to tokenizer.
+
+/// # Indexer
+///
+/// A single-threaded data structure implementation that internally utilizes
+/// multithreading and SIMD for data-level parallelism,
+/// optimizing throughput and tail latency.
+///
 /// The current strategy utilizes a single-threaded, thread-local indexer
 /// and perform a merge operation to generate a global index view.
 #[derive(Debug)]
@@ -79,25 +85,21 @@ impl Indexer {
         }
     }
 
-    // `term_count`: Occurences of term in the document.
-    // `path`: Document path.
-    // `total_word_count`: Total words in document
     pub fn insert(&mut self, descriptor: Descriptor) {
         let mut tokens = descriptor.tokenize(&mut self.tokenizer);
-
-        // Insert in file index.
         let path = descriptor.path();
         let word_count = tokens.len();
-        let index = self.core.create_and_insert_file_entry(path, word_count);
+
+        let mut file_entry = FileEntryBuilder::new(&mut self.core);
+        let mut term_entry = file_entry.insert(path, word_count);
 
         self.pipeline.run(&mut tokens);
 
-        tokens.iter().for_each(|token| {
-            self.core
-                .create_and_insert_tf_entry(token.to_string(), index);
+        tokens.iter_mut().for_each(|token| {
+            let term = mem::take(token);
+            unsafe { std::ptr::drop_in_place(token) };
+            term_entry.insert(term);
         });
-
-        self.core.reset_term_counter();
     }
 }
 
@@ -118,48 +120,72 @@ impl CoreIndexer {
         }
     }
 
-    pub fn create_and_insert_file_entry<S: Into<String>>(
-        &mut self,
-        path: S,
-        word_count: usize,
-    ) -> usize {
-        let entry = FileEntry::new(path.into(), word_count);
-        self.insert_file_entry(entry)
-    }
-
-    fn insert_file_entry(&mut self, entry: FileEntry) -> usize {
-        self.store.insert(entry)
-    }
-
-    pub fn create_and_insert_tf_entry<S: Into<String>>(&mut self, term: S, index: usize) {
-        let term: String = term.into();
-
-        self.insert_term(term.clone());
-        let word_frequency = unsafe { self.get_word_frequency_unchecked(&term) };
-        let entry = TfEntry::new(index, word_frequency);
-
-        self.insert_tf_entry(term.to_string(), entry);
-    }
-
-    fn insert_term<S: Into<String>>(&mut self, term: S) {
-        self.count.insert(term.into());
-    }
-
-    fn get_word_frequency(&self, term: &str) -> Option<&usize> {
-        self.count.get_ref(term)
-    }
-
-    /// SAFETY: The caller ensures that the counter is not zero, at one term is inserted.
+    /// SAFETY: The caller ensures that the counter is not zero, at least one term is inserted.
     unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
         unsafe { self.count.get_unchecked(term) }
     }
+}
 
-    fn insert_tf_entry(&mut self, term: String, entry: TfEntry) {
-        self.index.insert(term, entry);
+pub struct FileEntryBuilder<'cx> {
+    indexer: &'cx mut CoreIndexer,
+}
+
+impl<'cx> FileEntryBuilder<'cx> {
+    fn new(indexer: &'cx mut CoreIndexer) -> Self {
+        Self { indexer }
     }
 
-    pub fn reset_term_counter(&mut self) {
-        self.count.reset()
+    pub fn insert<S: Into<String>>(
+        &'cx mut self,
+        path: S,
+        word_count: usize,
+    ) -> TermEntryBuilder<'cx> {
+        let entry = FileEntry::new(path.into(), word_count);
+        let index = self.insert_inner(entry);
+        TermEntryBuilder::new(self.indexer, index)
+    }
+
+    fn insert_inner(&mut self, entry: FileEntry) -> usize {
+        self.indexer.store.insert(entry)
+    }
+}
+
+pub struct TermEntryBuilder<'cx> {
+    indexer: &'cx mut CoreIndexer,
+    file_index: usize,
+}
+
+impl<'cx> TermEntryBuilder<'cx> {
+    fn new(indexer: &'cx mut CoreIndexer, file_index: usize) -> Self {
+        Self {
+            indexer,
+            file_index,
+        }
+    }
+
+    pub fn insert<S: Into<String>>(&mut self, term: S) {
+        let term: String = term.into();
+
+        self.indexer.count.insert(term.clone());
+        let word_frequency = unsafe { self.indexer.get_word_frequency_unchecked(&term) };
+        let entry = TfEntry::new(self.file_index, word_frequency);
+
+        self.insert_inner(term, entry);
+    }
+
+    fn insert_inner(&mut self, term: String, entry: TfEntry) {
+        self.indexer.index.insert(term, entry);
+    }
+
+    #[allow(unused)]
+    fn reset_term_counter(&mut self) {
+        self.indexer.count.reset();
+    }
+}
+
+impl Drop for TermEntryBuilder<'_> {
+    fn drop(&mut self) {
+        self.indexer.count.reset();
     }
 }
 

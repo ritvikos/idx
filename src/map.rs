@@ -77,7 +77,7 @@ impl TermCounter {
 // since the tokenizer is not dropped.
 impl Drop for TermCounter {
     fn drop(&mut self) {
-        self.inner.clear();
+        self.reset()
     }
 }
 
