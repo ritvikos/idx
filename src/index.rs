@@ -166,7 +166,7 @@ impl<'cx> TermEntryBuilder<'cx> {
     pub fn insert<S: Into<String>>(&mut self, term: S) {
         let term: String = term.into();
 
-        self.indexer.count.insert(term.clone());
+        self.insert_counter(term.clone());
         let word_frequency = unsafe { self.indexer.get_word_frequency_unchecked(&term) };
         let entry = TfEntry::new(self.file_index, word_frequency);
 
@@ -175,6 +175,10 @@ impl<'cx> TermEntryBuilder<'cx> {
 
     fn insert_inner(&mut self, term: String, entry: TfEntry) {
         self.indexer.index.insert(term, entry);
+    }
+
+    fn insert_counter(&mut self, term: String) {
+        self.indexer.count.insert(term);
     }
 
     #[allow(unused)]
