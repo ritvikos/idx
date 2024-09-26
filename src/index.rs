@@ -17,7 +17,7 @@
 
 extern crate hashbrown;
 
-use std::{cell::RefCell, hash::Hash, intrinsics::drop_in_place, mem, num::NonZeroUsize};
+use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
 
 use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
@@ -25,7 +25,7 @@ use crate::{
     descriptor::Descriptor,
     map::TermCounter,
     normalizer::NormalizerPipeline,
-    tokenizer::{Token, Tokenizer},
+    tokenizer::{Token, Tokenizer, Tokens},
 };
 
 /*
@@ -38,11 +38,13 @@ no of doc containing the term: -
 total doc: -
 */
 
-// TODO: Fix 7 bytes wasted (padding and alignment), due to tokenizer.
+// TODO
+// - Fix 7 bytes wasted (padding), due to tokenizer.
+// - Lockfree data structures, to index and retrieve in separate threads, independently.
 
 /// # Indexer
 ///
-/// A single-threaded data structure implementation that internally utilizes
+/// Currently, a single-threaded data structure implementation that internally utilizes
 /// multithreading and SIMD for data-level parallelism,
 /// optimizing throughput and tail latency.
 ///
@@ -61,44 +63,29 @@ pub struct Indexer {
     pub capacity: usize,
 
     pub threshold: usize,
-
-    pub tokenizer: Tokenizer,
-
-    pub pipeline: NormalizerPipeline,
 }
 
 impl Indexer {
-    pub fn new(
-        capacity: usize,
-        threshold: usize,
-        tokenizer: Tokenizer,
-        pipeline: NormalizerPipeline,
-    ) -> Self {
+    pub fn new(capacity: usize, threshold: usize) -> Self {
         // TODO: Ensure threshold is less than capacity.
 
         Self {
             core: CoreIndexer::with_capacity(capacity),
             capacity,
             threshold,
-            tokenizer,
-            pipeline,
         }
     }
 
-    pub fn insert(&mut self, descriptor: Descriptor) {
-        let mut tokens = descriptor.tokenize(&mut self.tokenizer);
-        let path = descriptor.path();
-        let word_count = tokens.len();
-
+    pub fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
         let mut file_entry = FileEntryBuilder::new(&mut self.core);
         let mut term_entry = file_entry.insert(path, word_count);
 
-        self.pipeline.run(&mut tokens);
-
         tokens.iter_mut().for_each(|token| {
-            let term = mem::take(token);
-            unsafe { std::ptr::drop_in_place(token) };
-            term_entry.insert(term);
+            term_entry.insert_with(|| {
+                let term = std::mem::take(token);
+                unsafe { std::ptr::drop_in_place(token) };
+                term
+            });
         });
     }
 }
@@ -171,6 +158,11 @@ impl<'cx> TermEntryBuilder<'cx> {
         let entry = TfEntry::new(self.file_index, word_frequency);
 
         self.insert_inner(term, entry);
+    }
+
+    pub fn insert_with(&mut self, f: impl FnOnce() -> Token) {
+        let term = f();
+        self.insert(term);
     }
 
     fn insert_inner(&mut self, term: String, entry: TfEntry) {
