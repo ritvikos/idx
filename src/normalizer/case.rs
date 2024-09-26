@@ -1,6 +1,6 @@
-use crate::{normalizer::TextNormalizer, tokenizer::Tokens};
+use crate::{normalizer::TextNormalizer, token::Tokens};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Lowercase;
 
 impl Lowercase {
@@ -17,7 +17,7 @@ impl TextNormalizer for Lowercase {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Uppercase;
 
 impl Uppercase {
@@ -39,7 +39,6 @@ mod tests {
     use super::Lowercase;
     use crate::{
         normalizer::{case::Uppercase, TextNormalizer},
-        tokenizer::Token,
         tokens,
     };
 

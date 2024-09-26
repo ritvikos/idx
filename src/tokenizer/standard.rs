@@ -14,7 +14,7 @@ fn delimiters() -> &'static HashSet<&'static char> {
     })
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Standard;
 
 impl Standard {
@@ -33,10 +33,12 @@ impl TextTokenizer for Standard {
     }
 }
 
+// TODO: Robust standard tokenizer.
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        tokenizer::{Standard, TextTokenizer, Token},
+        tokenizer::{Standard, TextTokenizer},
         tokens,
     };
 

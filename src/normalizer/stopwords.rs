@@ -8,7 +8,7 @@ use crate::{
     error::{ConfigError, Error},
     normalizer::TextNormalizer,
     read::FileReader,
-    tokenizer::Tokens,
+    token::Tokens,
 };
 
 #[derive(Clone, Debug)]

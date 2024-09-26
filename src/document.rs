@@ -3,7 +3,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::tokenizer::{Token, Tokenizer};
+use crate::{
+    token::{Token, Tokens},
+    tokenizer::Tokenizer,
+};
 
 #[derive(Debug)]
 pub struct Document(String);
@@ -25,8 +28,8 @@ impl Document {
     }
 
     #[inline]
-    pub fn tokenize(&self, tokenizer: &mut Tokenizer) -> Vec<Token> {
-        tokenizer.tokenize(&self.inner())
+    pub fn tokenize(&self, tokenizer: &mut Tokenizer) -> Tokens {
+        tokenizer.tokenize(self.inner())
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::tokenizer::{TextTokenizer, Token, Tokens};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Whitespace;
 
 impl Whitespace {
@@ -18,7 +18,7 @@ impl TextTokenizer for Whitespace {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tokenizer::{TextTokenizer, Token, Whitespace},
+        tokenizer::{TextTokenizer, Whitespace},
         tokens,
     };
 

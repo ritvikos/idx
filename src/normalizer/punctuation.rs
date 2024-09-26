@@ -1,6 +1,6 @@
-use crate::{normalizer::TextNormalizer, tokenizer::Tokens};
+use crate::{normalizer::TextNormalizer, token::Tokens};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Punctuation;
 
 impl Punctuation {
@@ -12,7 +12,7 @@ impl Punctuation {
 impl TextNormalizer for Punctuation {
     fn normalize(&mut self, tokens: &mut Tokens) {
         tokens.iter_mut().for_each(|token| {
-            token.inner().retain(|ch| !ch.is_ascii_punctuation());
+            token.inner_mut().retain(|ch| !ch.is_ascii_punctuation());
         });
     }
 }

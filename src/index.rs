@@ -22,10 +22,8 @@ use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
 use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
 use crate::{
-    descriptor::Descriptor,
     map::TermCounter,
-    normalizer::NormalizerPipeline,
-    tokenizer::{Token, Tokenizer, Tokens},
+    token::{Token, Tokens},
 };
 
 /*

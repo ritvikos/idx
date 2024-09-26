@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     normalizer::TextNormalizer,
-    tokenizer::{Token, Tokens},
+    token::{Token, Tokens},
 };
 
 #[derive(Clone, Debug)]
@@ -44,7 +44,7 @@ where
 {
     fn normalize(&mut self, tokens: &mut Tokens) {
         tokens.iter_mut().for_each(|token| {
-            if let Some(replacement) = self.pairs.read().unwrap().get(token.inner()) {
+            if let Some(replacement) = self.pairs.read().unwrap().get(token.inner_ref()) {
                 *token = Token::from(replacement.to_string());
             }
         });

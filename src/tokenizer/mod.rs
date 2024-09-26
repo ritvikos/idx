@@ -1,28 +1,23 @@
+mod html;
 mod standard;
 mod whitespace;
 
 pub use {standard::Standard, whitespace::Whitespace};
 
-pub type Tokens = Vec<Token>;
+use crate::token::{Token, Tokens};
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Token(Vec<u8>);
-
-impl From<&str> for Token {
-    fn from(value: &str) -> Self {
-        Token(Vec::from(value))
-    }
+#[derive(Clone, Debug)]
+pub enum Tokenizer {
+    Standard(Standard),
+    Whitespace(Whitespace),
 }
 
-impl From<&&str> for Token {
-    fn from(value: &&str) -> Self {
-        Token(Vec::from(*value))
-    }
-}
-
-impl From<&[u8]> for Token {
-    fn from(value: &[u8]) -> Self {
-        Token(Vec::from(value))
+impl Tokenizer {
+    pub fn tokenize(&mut self, text: &str) -> Tokens {
+        match self {
+            Tokenizer::Standard(tokenizer) => tokenizer.tokenize(text),
+            Tokenizer::Whitespace(tokenizer) => tokenizer.tokenize(text),
+        }
     }
 }
 
@@ -30,26 +25,9 @@ pub trait TextTokenizer {
     fn tokenize<T: AsRef<str>>(&mut self, text: T) -> Tokens;
 }
 
-#[macro_export]
-macro_rules! tokens {
-    ( $( $token:expr ),* $(,)? ) => {{
-        vec![
-            $( Token::from($token) ),*
-        ]
-    }};
-}
-
-// pub struct Tokenizer<T: TextTokenizer>(T);
-
-// impl<'a, T: TextTokenizer<'a>> Tokenizer<T> {
-// pub fn new(kind: T) -> Self {
-// Self(kind)
-// }
-
-// pub fn tokenize(&mut self, text: &str) -> Vec<Token> {
-// self.0.tokenize(text)
-// }
-// }
+// TODO
+// 1. HTML Tokenizer
+// 2. Regex Tokenizer
 
 #[cfg(test)]
 mod tests {
@@ -67,4 +45,9 @@ mod tests {
 
     //         assert_eq!(tokens, expected);
     //     }
+
+    #[test]
+    fn test_tokens() {
+        // let tokens = tokens!["one"];
+    }
 }

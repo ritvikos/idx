@@ -3,10 +3,8 @@
 // use hashbrown::HashMap;
 
 use crate::{
-    descriptor::Descriptor,
-    index::Indexer,
-    normalizer::NormalizerPipeline,
-    tokenizer::{Tokenizer, Tokens},
+    descriptor::Descriptor, index::Indexer, normalizer::NormalizerPipeline, token::Tokens,
+    tokenizer::Tokenizer,
 };
 
 // TODO: Partition
@@ -34,7 +32,7 @@ impl Coordinator {
     pub fn insert(&mut self, descriptor: Descriptor) {
         let mut tokens = descriptor.tokenize(&mut self.tokenizer);
         let path = descriptor.path();
-        let word_count = tokens.len();
+        let word_count = tokens.count();
 
         if !self.pipeline.is_empty() {
             self.pipeline.run(&mut tokens);
