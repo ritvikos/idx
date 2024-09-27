@@ -17,13 +17,14 @@
 
 extern crate hashbrown;
 
-use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
+use std::{borrow::Borrow, cell::RefCell, hash::Hash, num::NonZeroUsize};
 
 use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
 use crate::{
     map::TermCounter,
     token::{Token, Tokens},
+    util::Counter,
 };
 
 /*
@@ -75,24 +76,40 @@ impl Indexer {
     }
 
     pub fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
-        let mut file_entry = FileEntryBuilder::new(&mut self.core);
+        let mut file_entry = FileEntryContext::new(&mut self.core);
         let mut term_entry = file_entry.insert(path, word_count);
 
         tokens.iter_mut().for_each(|token| {
-            term_entry.insert_with(|| {
+            term_entry.add_term_with(|| {
                 let term = std::mem::take(token);
                 unsafe { std::ptr::drop_in_place(token) };
                 term
             });
         });
     }
+
+    // pub fn get(&self, tokens: &Tokens) {
+    // // self.core.get_one()
+    // // self.core.get_many()
+    // }
+
+    /// Number of documents containing the term.
+    #[inline]
+    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
+        self.core.doc_term_frequency(term)
+    }
+
+    #[inline]
+    pub fn doc_total_terms(&self) -> usize {
+        self.core.doc_total_terms()
+    }
 }
 
 #[derive(Debug)]
 pub struct CoreIndexer {
-    store: FileIndex,
-    index: InvertedIndex,
-    count: TermCounter,
+    pub store: FileIndex,
+    pub index: InvertedIndex,
+    pub count: TermCounter,
 }
 
 impl CoreIndexer {
@@ -106,28 +123,53 @@ impl CoreIndexer {
     }
 
     /// SAFETY: The caller ensures that the counter is not zero, at least one term is inserted.
+    #[inline]
     unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
         unsafe { self.count.get_unchecked(term) }
     }
+
+    fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
+        self.index.get_term_entries(term)
+    }
+
+    // pub fn get_many(&self, terms: &[&str]) {}
+
+    /// Number of documents containing the term.
+    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
+        // todo!()
+        match self.get_term_entries(term) {
+            Some(entry) => Some(entry.count()),
+            None => None,
+        }
+    }
+
+    #[inline]
+    pub fn doc_total_terms(&self) -> usize {
+        self.store.len()
+        // match self.get_one(term) {
+        //     Some(entry) => Some(entry.count()),
+        //     None => None,
+        // }
+    }
 }
 
-pub struct FileEntryBuilder<'cx> {
-    indexer: &'cx mut CoreIndexer,
+pub struct FileEntryContext<'ctx> {
+    indexer: &'ctx mut CoreIndexer,
 }
 
-impl<'cx> FileEntryBuilder<'cx> {
-    fn new(indexer: &'cx mut CoreIndexer) -> Self {
+impl<'ctx> FileEntryContext<'ctx> {
+    fn new(indexer: &'ctx mut CoreIndexer) -> Self {
         Self { indexer }
     }
 
     pub fn insert<S: Into<String>>(
-        &'cx mut self,
+        &'ctx mut self,
         path: S,
         word_count: usize,
-    ) -> TermEntryBuilder<'cx> {
+    ) -> TermEntryContext<'ctx> {
         let entry = FileEntry::new(path.into(), word_count);
         let index = self.insert_inner(entry);
-        TermEntryBuilder::new(self.indexer, index)
+        TermEntryContext::new(self.indexer, index)
     }
 
     fn insert_inner(&mut self, entry: FileEntry) -> usize {
@@ -135,20 +177,20 @@ impl<'cx> FileEntryBuilder<'cx> {
     }
 }
 
-pub struct TermEntryBuilder<'cx> {
-    indexer: &'cx mut CoreIndexer,
+pub struct TermEntryContext<'ctx> {
+    indexer: &'ctx mut CoreIndexer,
     file_index: usize,
 }
 
-impl<'cx> TermEntryBuilder<'cx> {
-    fn new(indexer: &'cx mut CoreIndexer, file_index: usize) -> Self {
+impl<'ctx> TermEntryContext<'ctx> {
+    fn new(indexer: &'ctx mut CoreIndexer, file_index: usize) -> Self {
         Self {
             indexer,
             file_index,
         }
     }
 
-    pub fn insert<S: Into<String>>(&mut self, term: S) {
+    pub fn add_term<S: Into<String>>(&mut self, term: S) {
         let term: String = term.into();
 
         self.insert_counter(term.clone());
@@ -158,13 +200,13 @@ impl<'cx> TermEntryBuilder<'cx> {
         self.insert_inner(term, entry);
     }
 
-    pub fn insert_with(&mut self, f: impl FnOnce() -> Token) {
+    pub fn add_term_with(&mut self, f: impl FnOnce() -> Token) {
         let term = f();
-        self.insert(term);
+        self.add_term(term);
     }
 
     fn insert_inner(&mut self, term: String, entry: TfEntry) {
-        self.indexer.index.insert(term, entry);
+        self.indexer.index.add_term(term, entry);
     }
 
     fn insert_counter(&mut self, term: String) {
@@ -177,7 +219,7 @@ impl<'cx> TermEntryBuilder<'cx> {
     }
 }
 
-impl Drop for TermEntryBuilder<'_> {
+impl Drop for TermEntryContext<'_> {
     fn drop(&mut self) {
         self.indexer.count.reset();
     }
@@ -254,12 +296,13 @@ impl InvertedIndex {
         }
     }
 
+    /// Adds a term to the inverted index with its associated `RefEntry`.    
     #[inline]
-    pub fn insert(&mut self, term: String, tf_entry: TfEntry) {
+    pub fn add_term(&mut self, term: String, tf_entry: TfEntry) {
         // TODO: Track default capacity and threshold.
         self.inner
             .entry_ref(&term)
-            .and_modify(|entry| entry.insert(RefEntry::new(tf_entry)))
+            .and_modify(|entry| entry.add_entry(RefEntry::new(tf_entry)))
             .or_insert_with(|| {
                 let mut set = HashSet::new();
                 set.insert(RefEntry::new(tf_entry));
@@ -279,6 +322,24 @@ impl InvertedIndex {
         //     })
         //     .0
         //     .as_str()
+    }
+
+    /// Returns an immutable reference to the `IdfEntry` for a given term.
+    #[inline]
+    pub fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
+        match self.inner.get(term) {
+            Some(entry) => Some(entry),
+            None => None,
+        }
+    }
+
+    /// Number of documents containing the term.
+    #[inline]
+    pub fn count(&self, term: &str) -> Option<usize> {
+        match self.get_term_entries(term) {
+            Some(entry) => Some(entry.count()),
+            None => None,
+        }
     }
 }
 
@@ -301,19 +362,26 @@ impl IdfEntry {
         }
     }
 
-    #[inline]
     /// Number of documents containing the term.
+    #[inline]
     pub fn count(&self) -> usize {
         self.entries.len()
     }
 
-    #[inline]
-    pub fn insert(&mut self, entry: RefEntry) {
+    /// Adds a `RefEntry` to this `IdfEntry`.
+    pub fn add_entry(&mut self, entry: RefEntry) {
         if let Some(entry) = self.entries.get(&entry) {
-            entry.0.borrow_mut().frequency += 1;
+            // entry.0.borrow_mut().frequency += 1;
+            entry.0.borrow_mut().frequency.increment();
         }
 
         self.entries.insert(entry);
+    }
+
+    /// Retrieves all the entries associated with this `IdfEntry`.
+    #[inline]
+    pub fn get_entries(&self) -> &HashSet<RefEntry> {
+        &self.entries
     }
 
     // #[inline]
@@ -330,8 +398,19 @@ impl IdfEntry {
 pub struct RefEntry(RefCell<TfEntry>);
 
 impl RefEntry {
+    #[inline]
     pub fn new(entry: TfEntry) -> Self {
         Self(RefCell::new(entry))
+    }
+
+    #[inline]
+    pub fn increment_frequency(&self) {
+        self.0.borrow_mut().increment_frequency()
+    }
+
+    #[inline]
+    pub fn tf_entry(&self) -> TfEntry {
+        *self.0.borrow()
     }
 }
 
@@ -356,12 +435,32 @@ pub struct TfEntry {
     index: usize,
 
     /// Frequency of term in the file.
-    frequency: usize,
+    frequency: Counter<usize>,
+}
+
+impl TfEntry {
+    #[inline]
+    pub fn get_frequency(&mut self) -> Counter<usize> {
+        self.frequency
+    }
+
+    #[inline]
+    pub fn get_index(&mut self) -> usize {
+        self.index
+    }
+
+    #[inline]
+    pub fn increment_frequency(&mut self) {
+        self.frequency.increment();
+    }
 }
 
 impl TfEntry {
     pub fn new(index: usize, frequency: usize) -> Self {
-        Self { index, frequency }
+        Self {
+            index,
+            frequency: Counter::new(frequency),
+        }
     }
 }
 
