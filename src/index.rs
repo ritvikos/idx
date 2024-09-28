@@ -50,33 +50,34 @@ total doc: -
 /// The current strategy utilizes a single-threaded, thread-local indexer
 /// and perform a merge operation to generate a global index view.
 #[derive(Debug)]
-pub struct Indexer {
+pub struct Index {
     // The FilePathIndex component is a memory intensive component and is responsible for computing a file index from
     // the full file path and storing the index and the full file path into the
     // inverted index in order to be retrieved during search operations. The
     // file content, under the form of a list of extracted tokens, is then indexed by the TFIDFIndex, which is also a memory-intensive component
     // and that indexes the tokens and keeps track of the term frequencies
     // and inverse document frequencies necessary for computing the relevance score.
-    pub core: CoreIndexer,
+    pub core: CoreIndex,
 
     pub capacity: usize,
 
     pub threshold: usize,
 }
 
-impl Indexer {
+impl Index {
     pub fn new(capacity: usize, threshold: usize) -> Self {
         // TODO: Ensure threshold is less than capacity.
 
         Self {
-            core: CoreIndexer::with_capacity(capacity),
+            core: CoreIndex::with_capacity(capacity),
             capacity,
             threshold,
         }
     }
 
     pub fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
-        let mut file_entry = FileEntryContext::new(&mut self.core);
+        let mut writer = &mut self.core.writer();
+        let mut file_entry = FileEntryContext::new(&mut writer);
         let mut term_entry = file_entry.insert(path, word_count);
 
         tokens.iter_mut().for_each(|token| {
@@ -88,31 +89,36 @@ impl Indexer {
         });
     }
 
-    // pub fn get(&self, tokens: &Tokens) {
-    // // self.core.get_one()
-    // // self.core.get_many()
-    // }
-
     /// Number of documents containing the term.
     #[inline]
     pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
-        self.core.doc_term_frequency(term)
+        match self.get_term_entries(term) {
+            Some(entry) => Some(entry.count()),
+            None => None,
+        }
     }
 
+    /// Number of indexed documents.
     #[inline]
-    pub fn doc_total_terms(&self) -> usize {
-        self.core.doc_total_terms()
+    pub fn total_docs(&self) -> usize {
+        self.core.total_docs()
+    }
+
+    /// Number of indexed entries for a term.
+    #[inline]
+    fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
+        self.core.get_term_entries(term)
     }
 }
 
 #[derive(Debug)]
-pub struct CoreIndexer {
+pub struct CoreIndex {
     pub store: FileIndex,
     pub index: InvertedIndex,
     pub count: TermCounter,
 }
 
-impl CoreIndexer {
+impl CoreIndex {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -122,17 +128,16 @@ impl CoreIndexer {
         }
     }
 
-    /// SAFETY: The caller ensures that the counter is not zero, at least one term is inserted.
+    /// Number of indexed documents.
     #[inline]
-    unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
-        unsafe { self.count.get_unchecked(term) }
+    pub fn total_docs(&self) -> usize {
+        self.store.len()
     }
 
-    fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
-        self.index.get_term_entries(term)
+    #[inline]
+    pub fn insert_counter(&mut self, term: String) {
+        self.count.insert(term);
     }
-
-    // pub fn get_many(&self, terms: &[&str]) {}
 
     /// Number of documents containing the term.
     pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
@@ -143,22 +148,108 @@ impl CoreIndexer {
         }
     }
 
+    fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
+        self.index.get_term_entries(term)
+    }
+
+    /// SAFETY: The caller ensures that the counter is not zero, at least one term is inserted.
     #[inline]
-    pub fn doc_total_terms(&self) -> usize {
+    unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
+        unsafe { self.count.get_unchecked(term) }
+    }
+
+    /// Provides read access via `IndexReader`
+    pub fn reader(&self) -> IndexReader {
+        IndexReader {
+            store: &self.store,
+            index: &self.index,
+            count: &self.count,
+        }
+    }
+
+    /// Provides write access via `indexwriter`
+    pub fn writer(&mut self) -> IndexWriter {
+        IndexWriter {
+            store: &mut self.store,
+            index: &mut self.index,
+            count: &mut self.count,
+        }
+    }
+}
+
+pub struct IndexReader<'r> {
+    store: &'r FileIndex,
+    index: &'r InvertedIndex,
+    count: &'r TermCounter,
+}
+
+impl<'r> IndexReader<'r> {
+    /// Number of indexed documents
+    #[inline]
+    pub fn total_docs(&self) -> usize {
         self.store.len()
-        // match self.get_one(term) {
-        //     Some(entry) => Some(entry.count()),
-        //     None => None,
-        // }
+    }
+
+    // TODO:
+    // - Define the TF-IDF ops in trait
+    // - Whether to return Option<T> or concrete type?
+
+    /// Number of documents containing the term
+    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
+        self.get_term_entries(term).map(|entry| entry.count())
+    }
+
+    /// Get indexed entries for a term
+    pub fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
+        self.index.get_term_entries(term)
+    }
+
+    /// # Panics
+    /// If no term exists in the index.
+    #[inline]
+    pub unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
+        self.count.get_unchecked(term)
+    }
+}
+
+pub struct IndexWriter<'w> {
+    store: &'w mut FileIndex,
+    index: &'w mut InvertedIndex,
+    count: &'w mut TermCounter,
+}
+
+impl<'w> IndexWriter<'w> {
+    // Insert a term into the term counter (Write operation)
+    #[inline]
+    pub fn insert_counter(&mut self, term: String) {
+        self.count.insert(term);
+    }
+
+    // Insert a file entry (Write operation)
+    pub fn insert_file_entry(&mut self, entry: FileEntry) -> usize {
+        self.store.insert(entry)
+    }
+
+    // Reset the term counter (Write operation)
+    pub fn reset_count(&mut self) {
+        self.count.reset()
+    }
+
+    /// # Panics
+    /// If no term exists in the index.
+    #[inline]
+    pub unsafe fn get_word_frequency_unchecked(&self, term: &str) -> usize {
+        self.count.get_unchecked(term)
     }
 }
 
 pub struct FileEntryContext<'ctx> {
-    indexer: &'ctx mut CoreIndexer,
+    // indexer: &'ctx mut CoreIndex,
+    indexer: &'ctx mut IndexWriter<'ctx>,
 }
 
 impl<'ctx> FileEntryContext<'ctx> {
-    fn new(indexer: &'ctx mut CoreIndexer) -> Self {
+    fn new(indexer: &'ctx mut IndexWriter<'ctx>) -> Self {
         Self { indexer }
     }
 
@@ -178,12 +269,12 @@ impl<'ctx> FileEntryContext<'ctx> {
 }
 
 pub struct TermEntryContext<'ctx> {
-    indexer: &'ctx mut CoreIndexer,
+    indexer: &'ctx mut IndexWriter<'ctx>,
     file_index: usize,
 }
 
 impl<'ctx> TermEntryContext<'ctx> {
-    fn new(indexer: &'ctx mut CoreIndexer, file_index: usize) -> Self {
+    fn new(indexer: &'ctx mut IndexWriter<'ctx>, file_index: usize) -> Self {
         Self {
             indexer,
             file_index,
@@ -210,7 +301,7 @@ impl<'ctx> TermEntryContext<'ctx> {
     }
 
     fn insert_counter(&mut self, term: String) {
-        self.indexer.count.insert(term);
+        self.indexer.insert_counter(term);
     }
 
     #[allow(unused)]
@@ -224,6 +315,24 @@ impl Drop for TermEntryContext<'_> {
         self.indexer.count.reset();
     }
 }
+
+// pub trait InvertedIndexExt {
+//     fn new(capacity: usize) -> Self;
+//     fn get_term_entries(&self) -> IdfEntry;
+//     fn add_term(&mut self, term: String, tf_entry: TfEntry);
+// }
+
+// pub trait FileIndexExt {
+//     fn new(capacity: usize) -> Self;
+//     fn insert(&mut self, item: FileEntry) -> usize;
+//     fn get(&self, index: usize) -> Option<&FileEntry>;
+// }
+
+// pub trait TermCounterExt {
+//     fn new() -> Self;
+//     fn insert(&mut self, key: String) -> Result<(), Err>;
+//     fn get(&self, key: &str) -> Option<&Counter<usize>>;
+// }
 
 // TODO: Ensure that same files are not added more than once, maybe use another data structure.
 #[derive(Debug)]
@@ -253,6 +362,11 @@ impl FileIndex {
     pub fn insert(&mut self, value: FileEntry) -> usize {
         self.inner.push(value);
         self.inner.len() - 1
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&FileEntry> {
+        self.inner.get(index)
     }
 }
 
@@ -308,20 +422,6 @@ impl InvertedIndex {
                 set.insert(RefEntry::new(tf_entry));
                 IdfEntry { entries: set }
             });
-
-        // self.inner
-        //     .raw_entry_mut()
-        //     .from_key(&term)
-        //     .and_modify(|_, entry| {
-        //         entry.insert(RefEntry::new(tf_entry));
-        //     })
-        //     .or_insert_with(|| {
-        //         let mut set = HashSet::new();
-        //         set.insert(RefEntry::new(tf_entry));
-        //         (term, IdfEntry { entries: set })
-        //     })
-        //     .0
-        //     .as_str()
     }
 
     /// Returns an immutable reference to the `IdfEntry` for a given term.
