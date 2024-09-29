@@ -4,7 +4,7 @@ use std::{borrow::Borrow, fmt::Debug, hash::Hash};
 
 use hashbrown::{Equivalent, HashMap};
 
-use crate::util::Counter;
+use crate::{error::Error, util::Counter};
 
 #[derive(Debug, Default)]
 // pub struct TermCounter<K>
@@ -26,20 +26,17 @@ impl TermCounter {
 
     // pub fn insert(&mut self, key: K)
     // K: Borrow<Q> + std::cmp::Eq + Hash,
-    pub fn insert(&mut self, key: String) -> &str {
-        // self
-        // .inner
-        // .raw_entry_mut(&key)
-        // .and_modify(Counter::increment)
-        // .or_insert_with(|| Counter::new(1));
+    pub fn insert(&mut self, key: String) {
+        // self.inner
+        //     .raw_entry_mut(&key)
+        //     .and_modify(Counter::increment)
+        //     .or_insert_with(|| Counter::new(1));
 
         self.inner
             .raw_entry_mut()
             .from_key(&key)
             .and_modify(|_, counter| counter.increment())
-            .or_insert_with(|| (key, Counter::new(1)))
-            .0
-            .as_str()
+            .or_insert_with(|| (key, Counter::new(1)));
     }
 
     // pub fn get<Q>(&self, key: &Q) -> Option<&Counter<usize>>
@@ -50,27 +47,28 @@ impl TermCounter {
         self.inner.get(key)
     }
 
-    // pub fn get_ref<Q>(&self, key: &Q) -> Option<&usize>
-    // where
-    //     K: Borrow<Q>,
-    //     Q: Hash + ?Sized + Equivalent<K> + std::cmp::Eq,
-    pub fn get_ref(&self, key: &str) -> Option<&usize> {
-        self.inner
-            .get(key)
-            .and_then(|counter| Some(counter.inner_ref()))
-    }
-
     /// SAFETY: The caller ensures that atleast one term is present in the counter.
     //
     /// # Panics
     /// If the no term exists.
+    #[inline]
     pub unsafe fn get_unchecked(&self, key: &str) -> usize {
-        *self.get_ref(&key).unwrap()
+        **self.get(&key).unwrap()
     }
 
     pub fn reset(&mut self) {
         self.inner.clear();
     }
+
+    // pub fn get_ref<Q>(&self, key: &Q) -> Option<&usize>
+    // where
+    //     K: Borrow<Q>,
+    //     Q: Hash + ?Sized + Equivalent<K> + std::cmp::Eq,
+    // pub fn get_ref(&self, key: &str) -> Option<&usize> {
+    //     self.inner
+    //         .get(key)
+    //         .and_then(|counter| Some(counter.inner_ref()))
+    // }
 }
 
 // This will not work for this particular implementation

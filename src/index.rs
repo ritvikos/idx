@@ -17,7 +17,7 @@
 
 extern crate hashbrown;
 
-use std::{borrow::Borrow, cell::RefCell, hash::Hash, num::NonZeroUsize};
+use std::{borrow::Borrow, cell::RefCell, hash::Hash, marker::PhantomData, num::NonZeroUsize};
 
 use hashbrown::{hash_map::HashMap, hash_set::HashSet};
 
@@ -65,6 +65,7 @@ pub struct Index {
 }
 
 impl Index {
+    /// Creates a new instance of `Index`
     pub fn new(capacity: usize, threshold: usize) -> Self {
         // TODO: Ensure threshold is less than capacity.
 
@@ -76,17 +77,20 @@ impl Index {
     }
 
     pub fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
-        let mut writer = &mut self.core.writer();
-        let mut file_entry = FileEntryContext::new(&mut writer);
-        let mut term_entry = file_entry.insert(path, word_count);
+        let writer = self.core.writer();
+        let file_entry = WriterContext::<FileEntryState>::new(writer);
+
+        let mut term_entry = file_entry.entry(path, word_count);
 
         tokens.iter_mut().for_each(|token| {
-            term_entry.add_term_with(|| {
+            term_entry.insert_term_with(|| {
                 let term = std::mem::take(token);
                 unsafe { std::ptr::drop_in_place(token) };
                 term
             });
         });
+
+        term_entry.reset_counter()
     }
 
     /// Number of documents containing the term.
@@ -110,6 +114,76 @@ impl Index {
         self.core.get_term_entries(term)
     }
 }
+
+pub struct FileEntryState;
+
+#[derive(Clone, Copy)]
+pub struct TermEntryState {
+    index: usize,
+}
+
+pub struct WriterContext<'wctx, S> {
+    state: IndexWriter<'wctx>,
+    data: Option<S>,
+    _marker: PhantomData<S>,
+}
+
+impl<'wctx, S> WriterContext<'wctx, S> {
+    pub fn new(writer: IndexWriter<'wctx>) -> Self {
+        Self {
+            state: writer,
+            data: None,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn new_with_data(writer: IndexWriter<'wctx>, data: S) -> Self {
+        Self {
+            state: writer,
+            data: Some(data),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'wctx> WriterContext<'wctx, FileEntryState> {
+    pub fn entry(
+        mut self,
+        path: String,
+        word_count: usize,
+    ) -> WriterContext<'wctx, TermEntryState> {
+        let entry = FileEntry::new(path, word_count);
+        let index = self.state.insert_file_entry(entry);
+        WriterContext::<'wctx, TermEntryState>::new_with_data(self.state, TermEntryState { index })
+    }
+}
+
+impl<'wctx> WriterContext<'wctx, TermEntryState> {
+    pub fn insert_term(&mut self, term: String) {
+        self.state.insert_counter(term.clone());
+
+        let word_frequency = unsafe { self.state.get_word_frequency_unchecked(&term) };
+        let index = self.data.unwrap().index;
+
+        let entry = TfEntry::new(index, word_frequency);
+        self.state.insert_term(term, entry)
+    }
+
+    pub fn insert_term_with(&mut self, f: impl FnOnce() -> Token) {
+        let term = f().into();
+        self.insert_term(term);
+    }
+
+    pub fn reset_counter(&mut self) {
+        self.state.reset_count()
+    }
+}
+
+// impl<S> Drop for WriterContext<'_, S> {
+//     fn drop(&mut self) {
+//         todo!()
+//     }
+// }
 
 #[derive(Debug)]
 pub struct CoreIndex {
@@ -219,18 +293,22 @@ pub struct IndexWriter<'w> {
 }
 
 impl<'w> IndexWriter<'w> {
-    // Insert a term into the term counter (Write operation)
+    // Insert a term into the term counter
     #[inline]
     pub fn insert_counter(&mut self, term: String) {
         self.count.insert(term);
     }
 
-    // Insert a file entry (Write operation)
+    // Insert a file entry
     pub fn insert_file_entry(&mut self, entry: FileEntry) -> usize {
         self.store.insert(entry)
     }
 
-    // Reset the term counter (Write operation)
+    pub fn insert_term(&mut self, term: String, entry: TfEntry) {
+        self.index.add_term(term, entry)
+    }
+
+    // Reset the term counter
     pub fn reset_count(&mut self) {
         self.count.reset()
     }
@@ -243,78 +321,78 @@ impl<'w> IndexWriter<'w> {
     }
 }
 
-pub struct FileEntryContext<'ctx> {
-    // indexer: &'ctx mut CoreIndex,
-    indexer: &'ctx mut IndexWriter<'ctx>,
-}
+// pub struct FileEntryContext<'ctx> {
+//     // indexer: &'ctx mut CoreIndex,
+//     indexer: &'ctx mut IndexWriter<'ctx>,
+// }
 
-impl<'ctx> FileEntryContext<'ctx> {
-    fn new(indexer: &'ctx mut IndexWriter<'ctx>) -> Self {
-        Self { indexer }
-    }
+// impl<'ctx> FileEntryContext<'ctx> {
+//     fn new(indexer: &'ctx mut IndexWriter<'ctx>) -> Self {
+//         Self { indexer }
+//     }
 
-    pub fn insert<S: Into<String>>(
-        &'ctx mut self,
-        path: S,
-        word_count: usize,
-    ) -> TermEntryContext<'ctx> {
-        let entry = FileEntry::new(path.into(), word_count);
-        let index = self.insert_inner(entry);
-        TermEntryContext::new(self.indexer, index)
-    }
+//     pub fn insert<S: Into<String>>(
+//         &'ctx mut self,
+//         path: S,
+//         word_count: usize,
+//     ) -> TermEntryContext<'ctx> {
+//         let entry = FileEntry::new(path.into(), word_count);
+//         let index = self.insert_inner(entry);
+//         TermEntryContext::new(self.indexer, index)
+//     }
 
-    fn insert_inner(&mut self, entry: FileEntry) -> usize {
-        self.indexer.store.insert(entry)
-    }
-}
+//     fn insert_inner(&mut self, entry: FileEntry) -> usize {
+//         self.indexer.store.insert(entry)
+//     }
+// }
 
-pub struct TermEntryContext<'ctx> {
-    indexer: &'ctx mut IndexWriter<'ctx>,
-    file_index: usize,
-}
+// pub struct TermEntryContext<'ctx> {
+//     indexer: &'ctx mut IndexWriter<'ctx>,
+//     file_index: usize,
+// }
 
-impl<'ctx> TermEntryContext<'ctx> {
-    fn new(indexer: &'ctx mut IndexWriter<'ctx>, file_index: usize) -> Self {
-        Self {
-            indexer,
-            file_index,
-        }
-    }
+// impl<'ctx> TermEntryContext<'ctx> {
+//     fn new(indexer: &'ctx mut IndexWriter<'ctx>, file_index: usize) -> Self {
+//         Self {
+//             indexer,
+//             file_index,
+//         }
+//     }
 
-    pub fn add_term<S: Into<String>>(&mut self, term: S) {
-        let term: String = term.into();
+//     pub fn add_term<S: Into<String>>(&mut self, term: S) {
+//         let term: String = term.into();
 
-        self.insert_counter(term.clone());
-        let word_frequency = unsafe { self.indexer.get_word_frequency_unchecked(&term) };
-        let entry = TfEntry::new(self.file_index, word_frequency);
+//         self.insert_counter(term.clone());
+//         let word_frequency = unsafe { self.indexer.get_word_frequency_unchecked(&term) };
+//         let entry = TfEntry::new(self.file_index, word_frequency);
 
-        self.insert_inner(term, entry);
-    }
+//         self.insert_inner(term, entry);
+//     }
 
-    pub fn add_term_with(&mut self, f: impl FnOnce() -> Token) {
-        let term = f();
-        self.add_term(term);
-    }
+//     pub fn add_term_with(&mut self, f: impl FnOnce() -> Token) {
+//         let term = f();
+//         self.add_term(term);
+//     }
 
-    fn insert_inner(&mut self, term: String, entry: TfEntry) {
-        self.indexer.index.add_term(term, entry);
-    }
+//     fn insert_inner(&mut self, term: String, entry: TfEntry) {
+//         self.indexer.index.add_term(term, entry);
+//     }
 
-    fn insert_counter(&mut self, term: String) {
-        self.indexer.insert_counter(term);
-    }
+//     fn insert_counter(&mut self, term: String) {
+//         self.indexer.insert_counter(term);
+//     }
 
-    #[allow(unused)]
-    fn reset_term_counter(&mut self) {
-        self.indexer.count.reset();
-    }
-}
+//     #[allow(unused)]
+//     fn reset_term_counter(&mut self) {
+//         self.indexer.count.reset();
+//     }
+// }
 
-impl Drop for TermEntryContext<'_> {
-    fn drop(&mut self) {
-        self.indexer.count.reset();
-    }
-}
+// impl Drop for TermEntryContext<'_> {
+//     fn drop(&mut self) {
+//         self.indexer.count.reset();
+//     }
+// }
 
 // pub trait InvertedIndexExt {
 //     fn new(capacity: usize) -> Self;
@@ -595,7 +673,7 @@ impl AppendCache {
 mod tests {
     use crate::index::{IdfEntry, TfEntry};
 
-    use super::{FileEntry, FileIndex, InvertedIndex};
+    use super::{CoreIndex, FileEntry, FileIndex, InvertedIndex};
 
     const INDEX_CAP: usize = 100;
     const CAPACITY: usize = 100;
@@ -613,17 +691,24 @@ mod tests {
         // for tokens/terms in document, insert to inverted index
         // 6. Insert in inverted index
 
-        let mut index = InvertedIndex::with_capacity(INDEX_CAP);
-        let mut file_index = FileIndex::with_capacity(INDEX_CAP);
+        let mut indexer = CoreIndex::with_capacity(20);
+        let mut writer = indexer.writer();
+        writer.insert_counter("t".into());
+
+        let reader = indexer.reader();
+        let entries = reader.get_term_entries("t");
+
+        // let mut index = InvertedIndex::with_capacity(INDEX_CAP);
+        // let mut file_index = FileIndex::with_capacity(INDEX_CAP);
 
         // let file_path_index = file_index.insert(FileEntry::new(path, word_count));
         // let mut tf_entry = TfEntry::new(file_path_index, frequency);
 
         // index.insert(term, tf_entry);
 
-        let total_doc = 100;
-        let document = "he is good boy".to_string();
-        let term = "boy".to_string();
+        // let total_doc = 100;
+        // let document = "he is good boy".to_string();
+        // let term = "boy".to_string();
 
         // index.insert(term, )
     }

@@ -192,6 +192,7 @@ async fn main() {
 
                 println!("Number of documents containing the term: {term_doc_count:?}");
                 println!("Total documents: {total_docs}");
+                println!("{coordinator:#?}");
             }
         });
     });

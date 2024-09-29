@@ -3,7 +3,7 @@
 // use hashbrown::HashMap;
 
 use crate::{
-    descriptor::Descriptor, index::Indexer, normalizer::NormalizerPipeline, token::Tokens,
+    descriptor::Descriptor, index::Index, normalizer::NormalizerPipeline, token::Tokens,
     tokenizer::Tokenizer,
 };
 
@@ -14,13 +14,13 @@ pub trait Engine {
 
 // TODO: Partition
 #[derive(Debug)]
-pub struct Coordinator {
-    pub indexer: Indexer,
+pub struct IdxFacade {
+    pub index: Index,
     pub tokenizer: Tokenizer,
     pub pipeline: NormalizerPipeline,
 }
 
-impl Coordinator {
+impl IdxFacade {
     pub fn new(
         capacity: usize,
         threshold: usize,
@@ -28,7 +28,7 @@ impl Coordinator {
         pipeline: NormalizerPipeline,
     ) -> Self {
         Self {
-            indexer: Indexer::new(capacity, threshold),
+            index: Index::new(capacity, threshold),
             tokenizer,
             pipeline,
         }
@@ -47,7 +47,7 @@ impl Coordinator {
     }
 
     fn insert_inner<S: Into<String>>(&mut self, path: S, word_count: usize, tokens: &mut Tokens) {
-        self.indexer.insert(path.into(), word_count, tokens);
+        self.index.insert(path.into(), word_count, tokens);
     }
 
     // pub fn get(&self, query: Query) {
@@ -60,21 +60,35 @@ impl Coordinator {
     //     let total_docs = self.total_docs();
     // }
 
+    // FIXME: tf
+    pub fn get(&self, query: Query) {
+        let mut tokenizer = self.tokenizer.clone();
+        let mut pipeline = self.pipeline.clone();
+
+        let mut tokens = query.tokenize(&mut tokenizer);
+
+        if !self.pipeline.is_empty() {
+            pipeline.run(&mut tokens);
+        }
+
+        let word_count = tokens.count();
+    }
+
     /// Number of documents containing the term.
     #[inline]
     pub fn term_doc_count(&self, term: &str) -> Option<usize> {
-        self.indexer.doc_term_frequency(term)
+        self.index.doc_term_frequency(term)
     }
 
     #[inline]
     pub fn total_docs(&self) -> usize {
-        self.indexer.doc_total_terms()
+        self.index.total_docs()
     }
 }
 
 #[derive(Debug)]
 pub struct SearchContext<'ctx> {
-    indexer: &'ctx Indexer,
+    index: &'ctx Index,
     tokenizer: Tokenizer,
     pipeline: &'ctx NormalizerPipeline,
 }
@@ -82,12 +96,12 @@ pub struct SearchContext<'ctx> {
 impl<'ctx> SearchContext<'ctx> {
     #[inline]
     pub fn new(
-        indexer: &'ctx Indexer,
+        index: &'ctx Index,
         tokenizer: Tokenizer,
         pipeline: &'ctx NormalizerPipeline,
     ) -> Self {
         Self {
-            indexer,
+            index,
             tokenizer,
             pipeline,
         }
@@ -96,13 +110,13 @@ impl<'ctx> SearchContext<'ctx> {
     /// Number of documents containing the term.
     #[inline]
     pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
-        self.indexer.doc_term_frequency(term)
+        self.index.doc_term_frequency(term)
     }
 
     /// Total number of indexed documents
     #[inline]
     pub fn total_docs(&self) -> usize {
-        self.indexer.doc_total_terms()
+        self.index.total_docs()
     }
 
     pub fn search(&self) {
