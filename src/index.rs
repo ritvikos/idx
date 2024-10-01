@@ -123,7 +123,7 @@ pub struct TermEntryState {
 }
 
 pub struct WriterContext<'wctx, S> {
-    state: IndexWriter<'wctx>,
+    writer: IndexWriter<'wctx>,
     data: Option<S>,
     _marker: PhantomData<S>,
 }
@@ -131,7 +131,7 @@ pub struct WriterContext<'wctx, S> {
 impl<'wctx, S> WriterContext<'wctx, S> {
     pub fn new(writer: IndexWriter<'wctx>) -> Self {
         Self {
-            state: writer,
+            writer,
             data: None,
             _marker: PhantomData,
         }
@@ -139,7 +139,7 @@ impl<'wctx, S> WriterContext<'wctx, S> {
 
     pub fn new_with_data(writer: IndexWriter<'wctx>, data: S) -> Self {
         Self {
-            state: writer,
+            writer,
             data: Some(data),
             _marker: PhantomData,
         }
@@ -153,20 +153,20 @@ impl<'wctx> WriterContext<'wctx, FileEntryState> {
         word_count: usize,
     ) -> WriterContext<'wctx, TermEntryState> {
         let entry = FileEntry::new(path, word_count);
-        let index = self.state.insert_file_entry(entry);
-        WriterContext::<'wctx, TermEntryState>::new_with_data(self.state, TermEntryState { index })
+        let index = self.writer.insert_file_entry(entry);
+        WriterContext::<'wctx, TermEntryState>::new_with_data(self.writer, TermEntryState { index })
     }
 }
 
 impl<'wctx> WriterContext<'wctx, TermEntryState> {
     pub fn insert_term(&mut self, term: String) {
-        self.state.insert_counter(term.clone());
+        self.writer.insert_counter(term.clone());
 
-        let word_frequency = unsafe { self.state.get_word_frequency_unchecked(&term) };
+        let word_frequency = unsafe { self.writer.get_word_frequency_unchecked(&term) };
         let index = self.data.unwrap().index;
 
         let entry = TfEntry::new(index, word_frequency);
-        self.state.insert_term(term, entry)
+        self.writer.insert_term(term, entry)
     }
 
     pub fn insert_term_with(&mut self, f: impl FnOnce() -> Token) {
@@ -174,16 +174,11 @@ impl<'wctx> WriterContext<'wctx, TermEntryState> {
         self.insert_term(term);
     }
 
+    #[must_use = "The counter must be reset at the end"]
     pub fn reset_counter(&mut self) {
-        self.state.reset_count()
+        self.writer.reset_count()
     }
 }
-
-// impl<S> Drop for WriterContext<'_, S> {
-//     fn drop(&mut self) {
-//         todo!()
-//     }
-// }
 
 #[derive(Debug)]
 pub struct CoreIndex {
@@ -241,7 +236,7 @@ impl CoreIndex {
         }
     }
 
-    /// Provides write access via `indexwriter`
+    /// Provides write access via `IndexWriter`
     pub fn writer(&mut self) -> IndexWriter {
         IndexWriter {
             store: &mut self.store,
