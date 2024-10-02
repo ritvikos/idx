@@ -82,6 +82,16 @@ impl Index {
 
         let mut term_entry = file_entry.entry(path, word_count);
 
+        // TODO:
+        // File entry is stored.
+        // What if system outage happens here.
+        // The file store and inverted index will not sync,
+        // ends up with potentially corrupted data.
+
+        // Approach (runtime overhead):
+        // Maintain write-ahead logs to construct the
+        // core index.
+
         tokens.iter_mut().for_each(|token| {
             term_entry.insert_term_with(|| {
                 let term = std::mem::take(token);
@@ -93,19 +103,22 @@ impl Index {
         term_entry.reset_counter()
     }
 
+    // pub fn search(&self, term: &str) {}
+
     /// Number of documents containing the term.
     #[inline]
-    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
-        match self.get_term_entries(term) {
-            Some(entry) => Some(entry.count()),
-            None => None,
-        }
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        let reader = self.core.reader();
+        let ctx = ReaderContext::new(reader);
+        ctx.document_frequency(term)
     }
 
     /// Number of indexed documents.
     #[inline]
     pub fn total_docs(&self) -> usize {
-        self.core.total_docs()
+        let reader = self.core.reader();
+        let ctx = ReaderContext::new(reader);
+        ctx.total_documents()
     }
 
     /// Number of indexed entries for a term.
@@ -180,6 +193,28 @@ impl<'wctx> WriterContext<'wctx, TermEntryState> {
     }
 }
 
+pub struct ReaderContext<'rctx> {
+    reader: IndexReader<'rctx>,
+}
+
+impl<'rctx> ReaderContext<'rctx> {
+    pub fn new(reader: IndexReader<'rctx>) -> Self {
+        Self { reader }
+    }
+}
+
+impl<'rctx> ReaderContext<'rctx> {
+    #[inline]
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        self.reader.document_frequency(term)
+    }
+
+    #[inline]
+    pub fn total_documents(&self) -> usize {
+        self.reader.total_documents()
+    }
+}
+
 #[derive(Debug)]
 pub struct CoreIndex {
     pub store: FileIndex,
@@ -197,24 +232,9 @@ impl CoreIndex {
         }
     }
 
-    /// Number of indexed documents.
-    #[inline]
-    pub fn total_docs(&self) -> usize {
-        self.store.len()
-    }
-
     #[inline]
     pub fn insert_counter(&mut self, term: String) {
         self.count.insert(term);
-    }
-
-    /// Number of documents containing the term.
-    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
-        // todo!()
-        match self.get_term_entries(term) {
-            Some(entry) => Some(entry.count()),
-            None => None,
-        }
     }
 
     fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
@@ -255,7 +275,7 @@ pub struct IndexReader<'r> {
 impl<'r> IndexReader<'r> {
     /// Number of indexed documents
     #[inline]
-    pub fn total_docs(&self) -> usize {
+    pub fn total_documents(&self) -> usize {
         self.store.len()
     }
 
@@ -264,7 +284,7 @@ impl<'r> IndexReader<'r> {
     // - Whether to return Option<T> or concrete type?
 
     /// Number of documents containing the term
-    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
         self.get_term_entries(term).map(|entry| entry.count())
     }
 
@@ -457,8 +477,7 @@ impl FileEntry {
             path: path.into(),
 
             // SAFETY:
-            // - The value must not be zero.
-            // - Empty documents are not indexed.
+            // - The value must not be zero, so empty documents are not indexed.
             count: unsafe { NonZeroUsize::new_unchecked(word_count) },
         }
     }
@@ -508,7 +527,7 @@ impl InvertedIndex {
 
     /// Number of documents containing the term.
     #[inline]
-    pub fn count(&self, term: &str) -> Option<usize> {
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
         match self.get_term_entries(term) {
             Some(entry) => Some(entry.count()),
             None => None,
