@@ -1,12 +1,13 @@
 pub mod cli;
 pub mod descriptor;
 pub mod document;
+pub mod engine;
 pub mod error;
 pub mod filter;
-pub mod hash;
 pub mod index;
 pub mod map;
 pub mod normalizer;
 pub mod read;
+pub mod token;
 pub mod tokenizer;
 pub mod util;

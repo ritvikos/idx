@@ -106,7 +106,12 @@ impl Index {
         term_entry.reset_counter()
     }
 
-    // pub fn search(&self, term: &str) {}
+    #[inline]
+    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
+        let reader = self.core.reader();
+        let ctx = ReaderContext::new(reader);
+        ctx.term_frequency(term)
+    }
 
     /// Number of documents containing the term.
     #[inline]
@@ -216,6 +221,11 @@ impl<'rctx> ReaderContext<'rctx> {
     pub fn total_documents(&self) -> usize {
         self.reader.total_documents()
     }
+
+    #[inline]
+    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
+        self.reader.term_frequency(term)
+    }
 }
 
 #[derive(Debug)]
@@ -296,6 +306,21 @@ impl<'r> IndexReader<'r> {
         self.index.get_term_entries(term)
     }
 
+    /// Occurrence of term in the document.
+    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
+        self.index.get_entry_with(term, |entry| {
+            entry
+                .iter()
+                .map(|ref_entry| {
+                    let index = ref_entry.get_index();
+                    let frequency = ref_entry.get_frequency();
+                    let total_words = self.store.get(index).unwrap().count.get();
+                    Tf::new(total_words, frequency, index)
+                })
+                .collect::<Vec<Tf>>()
+        })
+    }
+
     // pub fn term_frequency(&self, term: &str) {
     //     self.index.get_term_entries()
     // }
@@ -343,96 +368,22 @@ impl<'w> IndexWriter<'w> {
     }
 }
 
-// pub struct FileEntryContext<'ctx> {
-//     // indexer: &'ctx mut CoreIndex,
-//     indexer: &'ctx mut IndexWriter<'ctx>,
-// }
+#[derive(Debug)]
+pub struct Tf {
+    count: usize,
+    frequency: Counter<usize>,
+    index: usize,
+}
 
-// impl<'ctx> FileEntryContext<'ctx> {
-//     fn new(indexer: &'ctx mut IndexWriter<'ctx>) -> Self {
-//         Self { indexer }
-//     }
-
-//     pub fn insert<S: Into<String>>(
-//         &'ctx mut self,
-//         path: S,
-//         word_count: usize,
-//     ) -> TermEntryContext<'ctx> {
-//         let entry = FileEntry::new(path.into(), word_count);
-//         let index = self.insert_inner(entry);
-//         TermEntryContext::new(self.indexer, index)
-//     }
-
-//     fn insert_inner(&mut self, entry: FileEntry) -> usize {
-//         self.indexer.store.insert(entry)
-//     }
-// }
-
-// pub struct TermEntryContext<'ctx> {
-//     indexer: &'ctx mut IndexWriter<'ctx>,
-//     file_index: usize,
-// }
-
-// impl<'ctx> TermEntryContext<'ctx> {
-//     fn new(indexer: &'ctx mut IndexWriter<'ctx>, file_index: usize) -> Self {
-//         Self {
-//             indexer,
-//             file_index,
-//         }
-//     }
-
-//     pub fn add_term<S: Into<String>>(&mut self, term: S) {
-//         let term: String = term.into();
-
-//         self.insert_counter(term.clone());
-//         let word_frequency = unsafe { self.indexer.get_word_frequency_unchecked(&term) };
-//         let entry = TfEntry::new(self.file_index, word_frequency);
-
-//         self.insert_inner(term, entry);
-//     }
-
-//     pub fn add_term_with(&mut self, f: impl FnOnce() -> Token) {
-//         let term = f();
-//         self.add_term(term);
-//     }
-
-//     fn insert_inner(&mut self, term: String, entry: TfEntry) {
-//         self.indexer.index.add_term(term, entry);
-//     }
-
-//     fn insert_counter(&mut self, term: String) {
-//         self.indexer.insert_counter(term);
-//     }
-
-//     #[allow(unused)]
-//     fn reset_term_counter(&mut self) {
-//         self.indexer.count.reset();
-//     }
-// }
-
-// impl Drop for TermEntryContext<'_> {
-//     fn drop(&mut self) {
-//         self.indexer.count.reset();
-//     }
-// }
-
-// pub trait InvertedIndexExt {
-//     fn new(capacity: usize) -> Self;
-//     fn get_term_entries(&self) -> IdfEntry;
-//     fn add_term(&mut self, term: String, tf_entry: TfEntry);
-// }
-
-// pub trait FileIndexExt {
-//     fn new(capacity: usize) -> Self;
-//     fn insert(&mut self, item: FileEntry) -> usize;
-//     fn get(&self, index: usize) -> Option<&FileEntry>;
-// }
-
-// pub trait TermCounterExt {
-//     fn new() -> Self;
-//     fn insert(&mut self, key: String) -> Result<(), Err>;
-//     fn get(&self, key: &str) -> Option<&Counter<usize>>;
-// }
+impl Tf {
+    pub fn new(count: usize, frequency: Counter<usize>, index: usize) -> Self {
+        Self {
+            count,
+            frequency,
+            index,
+        }
+    }
+}
 
 // TODO: Ensure that same files are not added more than once, maybe use another data structure.
 #[derive(Debug)]
@@ -538,16 +489,6 @@ impl InvertedIndex {
         self.get_entry_with(term, |entry| entry.count())
     }
 
-    /// Occurrence of term in the document.
-    // pub fn occurrence_in_document(&self, term: &str) {
-    //     self.get_entry_with(term, |entry| {
-    //         for ent in entry.iter() {
-    //             let index = ent.0.borrow().index;
-    //             let freq = ent.0.borrow().frequency;
-    //         }
-    //     });
-    // }
-
     /// Retrieves the `IdfEntry` associated with the specified `term` and applies
     /// the function `f` to it, returning the result wrapped in `Option`.
     /// If the term is not found, it returns `None`.
@@ -613,6 +554,7 @@ impl IdfEntry {
         &self.entries
     }
 
+    #[inline]
     pub fn iter(&self) -> EntriesIter {
         EntriesIter {
             inner: self.entries.iter(),
@@ -639,13 +581,28 @@ impl RefEntry {
     }
 
     #[inline]
-    pub fn increment_frequency(&self) {
-        self.0.borrow_mut().increment_frequency()
+    pub fn tf_entry(&self) -> TfEntry {
+        *self.0.borrow()
     }
 
     #[inline]
-    pub fn tf_entry(&self) -> TfEntry {
+    pub fn tf_entry_mut(&self) -> TfEntry {
         *self.0.borrow()
+    }
+
+    #[inline]
+    pub fn get_index(&self) -> usize {
+        self.tf_entry().get_index()
+    }
+
+    #[inline]
+    pub fn get_frequency(&self) -> Counter<usize> {
+        self.tf_entry().get_frequency()
+    }
+
+    #[inline]
+    pub fn increment_frequency(&self) {
+        self.tf_entry_mut().increment_frequency()
     }
 }
 
