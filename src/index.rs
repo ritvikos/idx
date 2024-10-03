@@ -19,7 +19,10 @@ extern crate hashbrown;
 
 use std::{borrow::Borrow, cell::RefCell, hash::Hash, marker::PhantomData, num::NonZeroUsize};
 
-use hashbrown::{hash_map::HashMap, hash_set::HashSet};
+use hashbrown::{
+    hash_map::HashMap,
+    hash_set::{HashSet, Iter},
+};
 
 use crate::{
     map::TermCounter,
@@ -89,8 +92,8 @@ impl Index {
         // ends up with potentially corrupted data.
 
         // Approach (runtime overhead):
-        // Maintain write-ahead logs to construct the
-        // core index.
+        // Maintain write-ahead logs to re-construct the
+        // core index in correct state.
 
         tokens.iter_mut().for_each(|token| {
             term_entry.insert_term_with(|| {
@@ -292,6 +295,10 @@ impl<'r> IndexReader<'r> {
     pub fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
         self.index.get_term_entries(term)
     }
+
+    // pub fn term_frequency(&self, term: &str) {
+    //     self.index.get_term_entries()
+    // }
 
     /// # Panics
     /// If no term exists in the index.
@@ -528,10 +535,40 @@ impl InvertedIndex {
     /// Number of documents containing the term.
     #[inline]
     pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        self.get_entry_with(term, |entry| entry.count())
+    }
+
+    /// Occurrence of term in the document.
+    // pub fn occurrence_in_document(&self, term: &str) {
+    //     self.get_entry_with(term, |entry| {
+    //         for ent in entry.iter() {
+    //             let index = ent.0.borrow().index;
+    //             let freq = ent.0.borrow().frequency;
+    //         }
+    //     });
+    // }
+
+    /// Retrieves the `IdfEntry` associated with the specified `term` and applies
+    /// the function `f` to it, returning the result wrapped in `Option`.
+    /// If the term is not found, it returns `None`.
+    #[inline]
+    pub fn get_entry_with<O>(&self, term: &str, f: impl FnOnce(&IdfEntry) -> O) -> Option<O> {
         match self.get_term_entries(term) {
-            Some(entry) => Some(entry.count()),
+            Some(entry) => Some(f(entry)),
             None => None,
         }
+    }
+}
+
+pub struct EntriesIter<'a> {
+    inner: Iter<'a, RefEntry>,
+}
+
+impl<'a> Iterator for EntriesIter<'a> {
+    type Item = &'a RefEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
@@ -574,6 +611,12 @@ impl IdfEntry {
     #[inline]
     pub fn get_entries(&self) -> &HashSet<RefEntry> {
         &self.entries
+    }
+
+    pub fn iter(&self) -> EntriesIter {
+        EntriesIter {
+            inner: self.entries.iter(),
+        }
     }
 
     // #[inline]
