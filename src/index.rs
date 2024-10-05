@@ -17,7 +17,7 @@
 
 extern crate hashbrown;
 
-use std::{borrow::Borrow, cell::RefCell, hash::Hash, marker::PhantomData, num::NonZeroUsize};
+use std::{cell::RefCell, hash::Hash, marker::PhantomData, num::NonZeroUsize};
 
 use hashbrown::{
     hash_map::HashMap,
@@ -67,51 +67,99 @@ pub struct Index {
     pub threshold: usize,
 }
 
-impl Index {
-    /// Creates a new instance of `Index`
-    pub fn new(capacity: usize, threshold: usize) -> Self {
-        // TODO: Ensure threshold is less than capacity.
+pub trait Indexer<T> {
+    fn new(options: Option<T>) -> Self;
+    fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
+    fn get(&self, term: &str);
+}
 
-        Self {
-            core: CoreIndex::with_capacity(capacity),
-            capacity,
-            threshold,
+impl Indexer<IndexOptions> for Index {
+    fn new(options: Option<IndexOptions>) -> Self {
+        match options {
+            Some(options) => {
+                // TODO: Ensure threshold is less than capacity.
+                let capacity = options.capacity;
+                let threshold = options.threshold;
+
+                Self {
+                    core: CoreIndex::with_capacity(capacity),
+                    capacity,
+                    threshold,
+                }
+            }
+            None => Self {
+                core: CoreIndex::with_capacity(10_000),
+                threshold: 9_500,
+                capacity: 10_000,
+            },
         }
     }
 
-    pub fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
+    // TODO:
+    // File entry is stored.
+    // What if system outage happens at this stage.
+    // The file store and inverted index won't sync,
+    // ends up with potentially corrupted state.
+
+    // Approach (runtime overhead):
+    // Maintain write-ahead logs to re-construct the
+    // core index in correct state.
+    fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
         let writer = self.core.writer();
         let file_entry = WriterContext::<FileEntryState>::new(writer);
-
         let mut term_entry = file_entry.entry(path, word_count);
 
-        // TODO:
-        // File entry is stored.
-        // What if system outage happens here.
-        // The file store and inverted index will not sync,
-        // ends up with potentially corrupted data.
-
-        // Approach (runtime overhead):
-        // Maintain write-ahead logs to re-construct the
-        // core index in correct state.
-
         tokens.iter_mut().for_each(|token| {
-            term_entry.insert_term_with(|| {
-                let term = std::mem::take(token);
-                unsafe { std::ptr::drop_in_place(token) };
-                term
-            });
+            term_entry.insert_term_with(|| std::mem::take(token));
         });
 
         term_entry.reset_counter()
     }
 
-    #[inline]
-    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
+    fn get(&self, term: &str) {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
-        ctx.term_frequency(term)
+
+        ctx.get_entry_with(term, |idf_entry| {
+            debug_assert!(idf_entry.count() > 0);
+
+            idf_entry.iter_with(|ref_entry| {
+                let partial = ref_entry.partial_tf();
+                let index = partial.get_index();
+
+                // Always greater than zero,
+                // since empty documents are not indexed.
+                let file_entry = self.store.get(index);
+                debug_assert_ne!(file_entry, None);
+
+                // Insertion will occur only if at least one entry exists,
+                // so entry is always greater than zero.
+                let count = file_entry.unwrap().count();
+                debug_assert!(count > 0);
+
+                // TODO: Return `TermFrequencies` here and use `idf` method.
+                partial.build(count)
+            })
+        });
     }
+}
+
+pub struct IndexOptions {
+    capacity: usize,
+    threshold: usize,
+}
+
+impl Index {
+    // /// Creates a new instance of `Index`
+    // pub fn new(capacity: usize, threshold: usize) -> Self {
+    //     // TODO: Ensure threshold is less than capacity.
+
+    //     Self {
+    //         core: CoreIndex::with_capacity(capacity),
+    //         capacity,
+    //         threshold,
+    //     }
+    // }
 
     /// Number of documents containing the term.
     #[inline]
@@ -209,13 +257,6 @@ impl<'rctx> ReaderContext<'rctx> {
     pub fn new(reader: IndexReader<'rctx>) -> Self {
         Self { reader }
     }
-}
-
-impl<'rctx> ReaderContext<'rctx> {
-    #[inline]
-    pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        self.reader.document_frequency(term)
-    }
 
     #[inline]
     pub fn total_documents(&self) -> usize {
@@ -223,8 +264,30 @@ impl<'rctx> ReaderContext<'rctx> {
     }
 
     #[inline]
-    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
-        self.reader.term_frequency(term)
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        self.reader.document_frequency(term)
+    }
+
+    #[inline]
+    fn index(&self) -> &InvertedIndex {
+        self.reader.index
+    }
+
+    #[inline]
+    fn store(&self) -> &FileIndex {
+        self.reader.store
+    }
+
+    // low-level function to retrieve `IdfEntry`, if exists.
+    #[inline]
+    pub fn get_entry(&self, term: &str) -> Option<&IdfEntry> {
+        self.reader.get_term_entries(term)
+    }
+
+    // low-level function to perform read operations on the entry, if exists.
+    #[inline]
+    pub fn get_entry_with<O>(&self, term: &str, f: impl FnOnce(&IdfEntry) -> O) -> Option<O> {
+        self.index().get_entry_with(term, f)
     }
 }
 
@@ -297,32 +360,50 @@ impl<'r> IndexReader<'r> {
     // - Whether to return Option<T> or concrete type?
 
     /// Number of documents containing the term
+    #[inline]
     pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        self.get_term_entries(term).map(|entry| entry.count())
+        self.index.get_entry_with(term, |entry| entry.count())
     }
 
     /// Get indexed entries for a term
+    #[inline]
     pub fn get_term_entries(&self, term: &str) -> Option<&IdfEntry> {
         self.index.get_term_entries(term)
     }
 
-    /// Occurrence of term in the document.
-    pub fn term_frequency(&self, term: &str) -> Option<Vec<Tf>> {
-        self.index.get_entry_with(term, |entry| {
-            entry
-                .iter()
-                .map(|ref_entry| {
-                    let index = ref_entry.get_index();
-                    let frequency = ref_entry.get_frequency();
-                    let total_words = self.store.get(index).unwrap().count.get();
-                    Tf::new(total_words, frequency, index)
-                })
-                .collect::<Vec<Tf>>()
-        })
-    }
+    // pub fn term_frequencies(&self, term: &str) -> Option<Vec<Tf>> {
+    //     self.index.get_entry_with(term, |idf_entry| {
+    //         debug_assert!(idf_entry.count() > 0);
 
-    // pub fn term_frequency(&self, term: &str) {
-    //     self.index.get_term_entries()
+    //         idf_entry.iter_with(|ref_entry| {
+    //             let partial = ref_entry.partial_tf();
+    //             let index = partial.get_index();
+    //             // let index = ref_entry.get_index();
+    //             // let frequency = ref_entry.get_frequency();
+
+    //             // Always greater than zero,
+    //             // since empty documents are not indexed.
+    //             let file_entry = self.store.get(index);
+    //             debug_assert_ne!(file_entry, None);
+
+    //             // Insertion will occur only if at least one entry exists,
+    //             // so entry is always greater than zero.
+    //             let count = file_entry.unwrap().count();
+    //             debug_assert!(count > 0);
+
+    //             // TODO: Return `TermFrequencies` here and use `idf` method.
+    //             partial.build(count)
+    //         })
+    //     })
+    // }
+
+    // pub fn idf(&self, term: &str) -> f32 {
+    //     let entry = self.index.get_term_entries(term).unwrap();
+    //     let total = self.store.len() as f32;
+    //     let count = entry.count() as f32;
+
+    //     let net = total / count;
+    //     net.log2()
     // }
 
     /// # Panics
@@ -368,20 +449,27 @@ impl<'w> IndexWriter<'w> {
     }
 }
 
+// TODO: Decide type for `value` field.
 #[derive(Debug)]
 pub struct Tf {
-    count: usize,
-    frequency: Counter<usize>,
     index: usize,
+    value: f32,
 }
 
 impl Tf {
-    pub fn new(count: usize, frequency: Counter<usize>, index: usize) -> Self {
-        Self {
-            count,
-            frequency,
-            index,
-        }
+    #[inline]
+    pub fn new(index: usize, value: f32) -> Self {
+        Self { index, value }
+    }
+
+    #[inline]
+    pub fn get_index(&self) -> usize {
+        self.index
+    }
+
+    #[inline]
+    pub fn get_value(&self) -> f32 {
+        self.value
     }
 }
 
@@ -421,7 +509,7 @@ impl FileIndex {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FileEntry {
     path: String,
 
@@ -438,6 +526,10 @@ impl FileEntry {
             // - The value must not be zero, so empty documents are not indexed.
             count: unsafe { NonZeroUsize::new_unchecked(word_count) },
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.count.get()
     }
 }
 
@@ -481,12 +573,6 @@ impl InvertedIndex {
             Some(entry) => Some(entry),
             None => None,
         }
-    }
-
-    /// Number of documents containing the term.
-    #[inline]
-    pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        self.get_entry_with(term, |entry| entry.count())
     }
 
     /// Retrieves the `IdfEntry` associated with the specified `term` and applies
@@ -541,8 +627,7 @@ impl IdfEntry {
     /// Adds a `RefEntry` to this `IdfEntry`.
     pub fn add_entry(&mut self, entry: RefEntry) {
         if let Some(entry) = self.entries.get(&entry) {
-            // entry.0.borrow_mut().frequency += 1;
-            entry.0.borrow_mut().frequency.increment();
+            entry.increment_frequency()
         }
 
         self.entries.insert(entry);
@@ -559,6 +644,12 @@ impl IdfEntry {
         EntriesIter {
             inner: self.entries.iter(),
         }
+    }
+
+    pub fn iter_with(&self, mut f: impl FnMut(&RefEntry) -> Tf) -> Vec<Tf> {
+        self.iter()
+            .map(|ref_entry| f(ref_entry))
+            .collect::<Vec<Tf>>()
     }
 
     // #[inline]
@@ -587,7 +678,7 @@ impl RefEntry {
 
     #[inline]
     pub fn tf_entry_mut(&self) -> TfEntry {
-        *self.0.borrow()
+        *self.0.borrow_mut()
     }
 
     #[inline]
@@ -604,6 +695,13 @@ impl RefEntry {
     pub fn increment_frequency(&self) {
         self.tf_entry_mut().increment_frequency()
     }
+
+    #[inline]
+    pub fn partial_tf(&self) -> PartialTf {
+        let index = self.get_index();
+        let frequency = *self.get_frequency() as f32;
+        PartialTf::new(index, frequency)
+    }
 }
 
 impl Hash for RefEntry {
@@ -615,6 +713,39 @@ impl Hash for RefEntry {
 impl PartialEq for RefEntry {
     fn eq(&self, other: &Self) -> bool {
         self.0.borrow().index == other.0.borrow().index
+    }
+}
+
+pub struct PartialTf {
+    index: usize,
+    frequency: f32,
+}
+
+impl PartialTf {
+    #[inline]
+    pub fn new(index: usize, frequency: f32) -> Self {
+        Self { index, frequency }
+    }
+
+    #[inline]
+    pub fn get_index(&self) -> usize {
+        self.index
+    }
+
+    #[inline]
+    pub fn get_frequency(&self) -> f32 {
+        self.frequency
+    }
+
+    #[inline]
+    #[must_use = "`PartialTf` is lazy. Build it."]
+    pub fn build(self, word_count: usize) -> Tf {
+        let frequency = self.frequency;
+        let index = self.index;
+        let word_count = word_count as f32;
+        let value = frequency / word_count;
+
+        Tf::new(index, value)
     }
 }
 
