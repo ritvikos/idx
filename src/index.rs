@@ -68,30 +68,20 @@ pub struct Index {
 }
 
 pub trait Indexer<T> {
-    fn new(options: Option<T>) -> Self;
+    fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get(&self, term: &str);
+    fn get(&self, term: &str) -> Option<Vec<Tf>>;
 }
 
 impl Indexer<IndexOptions> for Index {
-    fn new(options: Option<IndexOptions>) -> Self {
-        match options {
-            Some(options) => {
-                // TODO: Ensure threshold is less than capacity.
-                let capacity = options.capacity;
-                let threshold = options.threshold;
+    /// Creates a new instance of `Index`
+    fn new(capacity: usize, threshold: usize) -> Self {
+        // TODO: Ensure threshold is less than capacity.
 
-                Self {
-                    core: CoreIndex::with_capacity(capacity),
-                    capacity,
-                    threshold,
-                }
-            }
-            None => Self {
-                core: CoreIndex::with_capacity(10_000),
-                threshold: 9_500,
-                capacity: 10_000,
-            },
+        Self {
+            core: CoreIndex::with_capacity(capacity),
+            capacity,
+            threshold,
         }
     }
 
@@ -116,7 +106,7 @@ impl Indexer<IndexOptions> for Index {
         term_entry.reset_counter()
     }
 
-    fn get(&self, term: &str) {
+    fn get(&self, term: &str) -> Option<Vec<Tf>> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
@@ -124,23 +114,28 @@ impl Indexer<IndexOptions> for Index {
             debug_assert!(idf_entry.count() > 0);
 
             idf_entry.iter_with(|ref_entry| {
-                let partial = ref_entry.partial_tf();
-                let index = partial.get_index();
+                let index = ref_entry.get_index();
+                let frequency = *ref_entry.get_frequency();
 
                 // Always greater than zero,
                 // since empty documents are not indexed.
-                let file_entry = self.store.get(index);
-                debug_assert_ne!(file_entry, None);
-
                 // Insertion will occur only if at least one entry exists,
                 // so entry is always greater than zero.
-                let count = file_entry.unwrap().count();
+                let count = ctx.count(index);
                 debug_assert!(count > 0);
 
-                // TODO: Return `TermFrequencies` here and use `idf` method.
-                partial.build(count)
+                let tf = tf(frequency, count);
+
+                let total_documents = ctx.total_documents();
+                let document_frequency = idf_entry.count();
+                let idf = idf(total_documents, document_frequency);
+
+                let tfidf = tf * idf;
+                println!("tfidf: {tfidf}");
+
+                Tf::new(index, tf)
             })
-        });
+        })
     }
 }
 
@@ -149,18 +144,25 @@ pub struct IndexOptions {
     threshold: usize,
 }
 
+impl IndexOptions {
+    pub fn new(capacity: usize, threshold: usize) -> Self {
+        Self {
+            capacity,
+            threshold,
+        }
+    }
+}
+
+// FIXME: Need more robust conversion mechanism, as it can overflow.
+pub fn tf(frequency: usize, word_count: usize) -> f32 {
+    frequency as f32 / word_count as f32
+}
+
+pub fn idf(total_documents: usize, document_frequency: usize) -> f32 {
+    (total_documents as f32 / document_frequency as f32).log10()
+}
+
 impl Index {
-    // /// Creates a new instance of `Index`
-    // pub fn new(capacity: usize, threshold: usize) -> Self {
-    //     // TODO: Ensure threshold is less than capacity.
-
-    //     Self {
-    //         core: CoreIndex::with_capacity(capacity),
-    //         capacity,
-    //         threshold,
-    //     }
-    // }
-
     /// Number of documents containing the term.
     #[inline]
     pub fn document_frequency(&self, term: &str) -> Option<usize> {
@@ -268,8 +270,15 @@ impl<'rctx> ReaderContext<'rctx> {
         self.reader.document_frequency(term)
     }
 
+    // Always greater than zero,
+    // since empty documents are not indexed.
     #[inline]
-    fn index(&self) -> &InvertedIndex {
+    pub fn count(&self, index: usize) -> usize {
+        self.store().get(index).unwrap().count()
+    }
+
+    #[inline]
+    fn inverted_index(&self) -> &InvertedIndex {
         self.reader.index
     }
 
@@ -287,7 +296,7 @@ impl<'rctx> ReaderContext<'rctx> {
     // low-level function to perform read operations on the entry, if exists.
     #[inline]
     pub fn get_entry_with<O>(&self, term: &str, f: impl FnOnce(&IdfEntry) -> O) -> Option<O> {
-        self.index().get_entry_with(term, f)
+        self.inverted_index().get_entry_with(term, f)
     }
 }
 
@@ -371,31 +380,10 @@ impl<'r> IndexReader<'r> {
         self.index.get_term_entries(term)
     }
 
-    // pub fn term_frequencies(&self, term: &str) -> Option<Vec<Tf>> {
-    //     self.index.get_entry_with(term, |idf_entry| {
-    //         debug_assert!(idf_entry.count() > 0);
-
-    //         idf_entry.iter_with(|ref_entry| {
-    //             let partial = ref_entry.partial_tf();
-    //             let index = partial.get_index();
-    //             // let index = ref_entry.get_index();
-    //             // let frequency = ref_entry.get_frequency();
-
-    //             // Always greater than zero,
-    //             // since empty documents are not indexed.
-    //             let file_entry = self.store.get(index);
-    //             debug_assert_ne!(file_entry, None);
-
-    //             // Insertion will occur only if at least one entry exists,
-    //             // so entry is always greater than zero.
-    //             let count = file_entry.unwrap().count();
-    //             debug_assert!(count > 0);
-
-    //             // TODO: Return `TermFrequencies` here and use `idf` method.
-    //             partial.build(count)
-    //         })
-    //     })
-    // }
+    #[inline]
+    pub fn get_index(&self, index: usize) -> Option<&FileEntry> {
+        self.store.get(index)
+    }
 
     // pub fn idf(&self, term: &str) -> f32 {
     //     let entry = self.index.get_term_entries(term).unwrap();
@@ -695,13 +683,6 @@ impl RefEntry {
     pub fn increment_frequency(&self) {
         self.tf_entry_mut().increment_frequency()
     }
-
-    #[inline]
-    pub fn partial_tf(&self) -> PartialTf {
-        let index = self.get_index();
-        let frequency = *self.get_frequency() as f32;
-        PartialTf::new(index, frequency)
-    }
 }
 
 impl Hash for RefEntry {
@@ -713,39 +694,6 @@ impl Hash for RefEntry {
 impl PartialEq for RefEntry {
     fn eq(&self, other: &Self) -> bool {
         self.0.borrow().index == other.0.borrow().index
-    }
-}
-
-pub struct PartialTf {
-    index: usize,
-    frequency: f32,
-}
-
-impl PartialTf {
-    #[inline]
-    pub fn new(index: usize, frequency: f32) -> Self {
-        Self { index, frequency }
-    }
-
-    #[inline]
-    pub fn get_index(&self) -> usize {
-        self.index
-    }
-
-    #[inline]
-    pub fn get_frequency(&self) -> f32 {
-        self.frequency
-    }
-
-    #[inline]
-    #[must_use = "`PartialTf` is lazy. Build it."]
-    pub fn build(self, word_count: usize) -> Tf {
-        let frequency = self.frequency;
-        let index = self.index;
-        let word_count = word_count as f32;
-        let value = frequency / word_count;
-
-        Tf::new(index, value)
     }
 }
 
