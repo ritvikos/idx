@@ -1,4 +1,5 @@
 pub mod cli;
+mod core;
 pub mod descriptor;
 pub mod document;
 pub mod engine;
@@ -8,6 +9,8 @@ pub mod index;
 pub mod map;
 pub mod normalizer;
 pub mod read;
+pub mod reader;
 pub mod token;
 pub mod tokenizer;
 pub mod util;
+pub mod writer;
