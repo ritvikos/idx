@@ -7,7 +7,7 @@ use std::{collections::HashMap, num::NonZeroUsize};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ConfigError, Error, IoError};
+use crate::error::{ConfigError, Error};
 
 #[derive(Clone, Debug, Parser)]
 #[command(author, version, about, long_about = None)]
@@ -41,9 +41,9 @@ impl Cli {
             )));
         }
 
-        if !std::path::Path::new(&self.config).exists() {
-            return Err(Error::from(ConfigError::File(std::io::ErrorKind::NotFound)));
-        }
+        std::path::Path::new(&self.config)
+            .try_exists()
+            .map_err(|error| ConfigError::File(error.kind()))?;
 
         Ok(())
     }
@@ -54,10 +54,8 @@ impl Cli {
     }
 
     fn parse(&self, buffer: &str) -> Result<Config, Error> {
-        serde_json::from_str(&buffer).map_err(|error| match error.io_error_kind() {
-            Some(io_err) => Error::from(IoError::Reader(io_err)),
-            None => Error::from(IoError::Reader(std::io::ErrorKind::Other)),
-        })
+        serde_json::from_str(buffer)
+            .map_err(|error| Error::from(ConfigError::Serialization(error.to_string())))
     }
 }
 
@@ -175,9 +173,9 @@ pub fn validate_file(file: &str, extension: &str) -> Result<(), Error> {
         )));
     }
 
-    if !std::path::Path::new(file).exists() {
-        return Err(Error::from(ConfigError::File(std::io::ErrorKind::NotFound)));
-    }
+    std::path::Path::new(file)
+        .try_exists()
+        .map_err(|error| ConfigError::File(error.kind()))?;
 
     Ok(())
 }

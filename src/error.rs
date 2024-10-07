@@ -1,48 +1,41 @@
-use std::{error::Error as CoreError, fmt, io};
+extern crate thiserror;
 
-#[derive(Debug)]
-pub struct Error(Kind);
+use std::io;
 
-impl Error {
-    /// Create a new `Error`.
-    pub(crate) fn new(kind: Kind) -> Self {
-        Self(kind)
-    }
+use thiserror::Error;
 
-    /// Create a new `ConfigError`.
-    pub(crate) fn config(kind: ConfigError) -> Self {
-        Self::new(Kind::Config(kind))
-    }
+/// Error type.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("{0}")]
+    Config(#[from] ConfigError),
+
+    #[error("{0}")]
+    Io(#[from] IoError),
 }
 
-impl CoreError for Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.0 {
-            Kind::Config(reason) => write!(f, "{reason}"),
-        }
-    }
-}
-
-/// Defines the error type.
-#[derive(Debug, PartialEq)]
-pub enum Kind {
-    Config(ConfigError),
-}
-
-// Configuration error.
-#[derive(Debug, PartialEq)]
+/// Configuration error.
+#[derive(Debug, Error, PartialEq)]
 pub enum ConfigError {
+    #[error("File I/O Error: {0}")]
     File(io::ErrorKind),
+
+    #[error("Reader I/O Error: {0}")]
+    Reader(io::ErrorKind),
+
+    #[error("Tokenizer Error: {0}")]
+    Tokenizer(String),
+
+    #[error("Serialization Error: {0}")]
+    Serialization(String),
 }
 
-impl CoreError for ConfigError {}
+/// I/O errors.
+#[derive(Debug, Error, PartialEq)]
+pub enum IoError {
+    #[error("File Error: {0}")]
+    File(io::ErrorKind),
 
-impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            ConfigError::File(_) => write!(f, "I/O Error"),
-        }
-    }
+    #[error("Reader Error: {0}")]
+    Reader(io::ErrorKind),
 }

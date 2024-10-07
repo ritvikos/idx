@@ -7,9 +7,20 @@ edition = "2021"
 name = "idx"
 path = "src/main.rs"
 
+[[bench]]
+name = "micro"
+harness = false
+
 [dependencies]
 clap = { version = "4.5.16", features = ["derive"] }
 crossbeam-channel = "0.5.13"
+hashbrown = "0.14.5"
+html2text = "0.12.5"
 num-traits = "0.2.19"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "test-util"] }
-xxhash-rust = { version = "0.8.12", features = ["std", "xxh3"] }
+
+[dev-dependencies]
+criterion = "0.5.1"
