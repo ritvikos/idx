@@ -3,10 +3,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{
-    token::{Token, Tokens},
-    tokenizer::Tokenizer,
-};
+use crate::{token::Tokens, tokenizer::Tokenizer};
 
 #[derive(Debug)]
 pub struct Document(String);
@@ -18,34 +15,23 @@ impl Document {
     }
 
     #[inline]
-    pub fn inner(&self) -> &String {
-        &self.0
-    }
-
-    #[inline]
-    pub fn inner_mut(&mut self) -> &mut String {
-        &mut self.0
-    }
-
-    #[inline]
     pub fn tokenize(&self, tokenizer: &mut Tokenizer) -> Tokens {
-        tokenizer.tokenize(self.inner())
+        tokenizer.tokenize(self.as_ref())
     }
 }
 
-impl From<String> for Document {
-    #[inline]
-    fn from(buffer: String) -> Self {
-        Document(buffer)
+impl<T: Into<String>> From<T> for Document {
+    fn from(buffer: T) -> Self {
+        Self(buffer.into())
     }
 }
 
 impl Deref for Document {
-    type Target = String;
+    type Target = str;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.inner()
+        &self.0
     }
 }
 
@@ -59,5 +45,11 @@ impl DerefMut for Document {
 impl Display for Document {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for Document {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }

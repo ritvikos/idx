@@ -1,6 +1,6 @@
 use crate::{
     document::Document,
-    token::{TokenVec, Tokens},
+    token::Tokens,
     tokenizer::Tokenizer,
 };
 
@@ -17,7 +17,7 @@ impl Descriptor {
     }
 
     #[inline]
-    pub fn document(&self) -> &Document {
+    pub fn inner(&self) -> &Document {
         &self.document
     }
 
@@ -33,11 +33,6 @@ impl Descriptor {
 
     #[inline]
     pub fn tokenize(&self, tokenizer: &mut Tokenizer) -> Tokens {
-        TokenVec::from(self.document.tokenize(tokenizer))
+        self.document.tokenize(tokenizer)
     }
-
-    // #[inline]
-    // pub fn word_count(&self) -> usize {
-    //     self.document.word_count()
-    // }
 }
