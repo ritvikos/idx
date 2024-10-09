@@ -1,10 +1,10 @@
 extern crate hashbrown;
 
-use std::{borrow::Borrow, fmt::Debug, hash::Hash};
+use std::fmt::Debug;
 
-use hashbrown::{Equivalent, HashMap};
+use hashbrown::hash_map::HashMap;
 
-use crate::{error::Error, util::Counter};
+use crate::util::Counter;
 
 #[derive(Debug, Default)]
 // pub struct TermCounter<K>
@@ -53,7 +53,7 @@ impl TermCounter {
     /// If the no term exists.
     #[inline]
     pub unsafe fn get_unchecked(&self, key: &str) -> usize {
-        **self.get(&key).unwrap()
+        **self.get(key).unwrap()
     }
 
     pub fn reset(&mut self) {

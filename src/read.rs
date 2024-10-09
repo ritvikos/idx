@@ -1,8 +1,13 @@
+extern crate tokio;
+
 use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigError, Error, IoError};
 
-use tokio::{fs::File, io::AsyncReadExt};
+use tokio::{
+    fs::File,
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader, Lines},
+};
 
 #[derive(Debug, Default)]
 pub struct FileReader {
@@ -15,17 +20,35 @@ impl FileReader {
         Self::default()
     }
 
-    pub async fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+    #[must_use = "File path must be set"]
+    pub async fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<&mut Self, Error> {
         let path_buf = path.as_ref().to_path_buf();
 
         match File::open(&path_buf).await {
             Ok(file) => {
                 self.inner = Some(file);
                 self.path = path_buf;
-                Ok(())
+                Ok(self)
             }
             Err(error) => Err(ConfigError::File(error.kind()).into()),
         }
+    }
+
+    pub async fn to_buf_reader(&mut self) -> Result<BufReader<File>, Error> {
+        if let Some(file) = self.inner.take() {
+            Ok(BufReader::new(file))
+        } else {
+            let file = File::open(&self.path)
+                .await
+                .map_err(|error| Error::from(ConfigError::File(error.kind())))?;
+
+            Ok(BufReader::new(file))
+        }
+    }
+
+    pub async fn read_lines(&mut self) -> Result<Lines<BufReader<File>>, Error> {
+        let reader = self.to_buf_reader().await?;
+        Ok(reader.lines())
     }
 
     pub fn path(&self) -> &Path {
@@ -38,7 +61,7 @@ impl FileReader {
                 .read_to_string(buffer)
                 .await
                 .map(|_| ())
-                .map_err(|error| Err(IoError::File(error.kind())).unwrap()),
+                .map_err(|error| panic!("{:?}", IoError::File(error.kind()))),
 
             None => Err(IoError::Reader(std::io::ErrorKind::InvalidInput).into()),
         }
@@ -49,15 +72,7 @@ impl FileReader {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        path::PathBuf,
-        sync::{atomic::AtomicBool, Arc, Condvar},
-    };
-
     use crate::read::FileReader;
-
-    use crossbeam::queue::SegQueue;
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_reader_file_open() {
@@ -68,46 +83,5 @@ mod tests {
 
         reader.open(path).await.unwrap();
         reader.read_into(&mut buffer).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_reader_file_multi_thread() {
-        const READ_THREADS: usize = 2;
-
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let queue = Arc::new(SegQueue::new());
-        let (lock, cvar) = (AtomicBool::new(false), Arc::new(Condvar::new()));
-
-        queue.push(PathBuf::from("tests/data/html.txt"));
-        queue.push(PathBuf::from("tests/data/sample.txt"));
-
-        (0..READ_THREADS).for_each(|_| {
-            let tx = tx.clone();
-            let queue = queue.clone();
-
-            std::thread::spawn(move || {
-                if let Some(path) = queue.pop() {
-                    tokio::spawn(async move {
-                        tx.send(path).unwrap();
-                    });
-                }
-            });
-        });
-
-        while let Some(path) = rx.recv().await {
-            println!("{path:?}");
-        }
-
-        // tokio::spawn(async { while let Some(path) = rx.recv().await {} });
-
-        // rayon::scope(|s| {
-        //     (0..READ_THREADS).into_iter().for_each(|_| {
-        //         s.spawn(|_| {
-        //             if let Some(path) = queue.pop() {
-        //                 println!("path: {:?}", path);
-        //             }
-        //         })
-        //     })
-        // });
     }
 }

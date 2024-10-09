@@ -5,7 +5,7 @@ pub struct Lowercase;
 
 impl Lowercase {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 
@@ -22,7 +22,7 @@ pub struct Uppercase;
 
 impl Uppercase {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

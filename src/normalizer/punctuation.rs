@@ -5,7 +5,7 @@ pub struct Punctuation;
 
 impl Punctuation {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

@@ -1,9 +1,9 @@
-// extern crate hashbrown;
-
-// use hashbrown::HashMap;
-
 use crate::{
-    descriptor::Descriptor, index::Index, normalizer::NormalizerPipeline, token::Tokens,
+    core::Tf,
+    descriptor::Descriptor,
+    index::{Index, Indexer},
+    normalizer::NormalizerPipeline,
+    token::Tokens,
     tokenizer::Tokenizer,
 };
 
@@ -61,7 +61,7 @@ impl IdxFacade {
     // }
 
     // FIXME: tf
-    pub fn get(&self, query: Query) {
+    pub fn get(&self, query: Query) -> Option<Vec<Tf>> {
         let mut tokenizer = self.tokenizer.clone();
         let mut pipeline = self.pipeline.clone();
 
@@ -71,15 +71,18 @@ impl IdxFacade {
             pipeline.run(&mut tokens);
         }
 
-        let word_count = tokens.count();
+        // let word_count = tokens.count();
+        let term = query.0;
+        self.index.get(&term)
     }
 
     /// Number of documents containing the term.
     #[inline]
-    pub fn term_doc_count(&self, term: &str) -> Option<usize> {
-        self.index.doc_term_frequency(term)
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        self.index.document_frequency(term)
     }
 
+    /// Total number of indexed documents.
     #[inline]
     pub fn total_docs(&self) -> usize {
         self.index.total_docs()
@@ -109,8 +112,8 @@ impl<'ctx> SearchContext<'ctx> {
 
     /// Number of documents containing the term.
     #[inline]
-    pub fn doc_term_frequency(&self, term: &str) -> Option<usize> {
-        self.index.doc_term_frequency(term)
+    pub fn document_frequency(&self, term: &str) -> Option<usize> {
+        self.index.document_frequency(term)
     }
 
     /// Total number of indexed documents

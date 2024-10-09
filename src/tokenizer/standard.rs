@@ -19,7 +19,7 @@ pub struct Standard;
 
 impl Standard {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

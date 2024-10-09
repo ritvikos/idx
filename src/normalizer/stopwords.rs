@@ -31,7 +31,7 @@ impl Stopwords {
             Ok(reader) => match reader.read_lines().await {
                 Ok(mut lines) => {
                     while let Ok(Some(line)) = lines.next_line().await {
-                        if line.trim().split_whitespace().count() != 1 {
+                        if line.split_whitespace().count() != 1 {
                             return Err(Error::from(ConfigError::Tokenizer(format!(
                                 "Error in txt file. Invalid stopword {line}"
                             ))));

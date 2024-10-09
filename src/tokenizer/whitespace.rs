@@ -5,7 +5,7 @@ pub struct Whitespace;
 
 impl Whitespace {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

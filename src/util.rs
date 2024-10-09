@@ -13,22 +13,32 @@ impl<T> Counter<T>
 where
     T: Copy + Unsigned + AddAssign + SubAssign,
 {
+    #[inline]
     pub fn new(counter: T) -> Self {
         Self(counter)
     }
 
+    #[inline]
+    pub fn inner_ref(&self) -> &T {
+        &self.0
+    }
+
+    #[inline]
     pub fn increment(&mut self) {
         self.increment_by(T::one());
     }
 
+    #[inline]
     pub fn decrement(&mut self) {
         self.decrement_by(T::one());
     }
 
+    #[inline]
     fn increment_by(&mut self, count: T) {
         self.0 += count;
     }
 
+    #[inline]
     fn decrement_by(&mut self, count: T) {
         self.0 -= count;
     }

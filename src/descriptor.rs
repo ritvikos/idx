@@ -1,8 +1,4 @@
-use crate::{
-    document::Document,
-    token::Tokens,
-    tokenizer::Tokenizer,
-};
+use crate::{document::Document, token::Tokens, tokenizer::Tokenizer};
 
 #[derive(Debug)]
 pub struct Descriptor {

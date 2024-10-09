@@ -28,6 +28,15 @@ pub enum ConfigError {
 
     #[error("Serialization Error: {0}")]
     Serialization(String),
+
+    #[error("Unsupported Format: {0}")]
+    FileFormat(String),
+
+    #[error("Missing Extension")]
+    MissingExtension,
+
+    #[error("Invalid Extension: {0}")]
+    InvalidExtension(String),
 }
 
 /// I/O errors.

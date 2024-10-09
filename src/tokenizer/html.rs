@@ -15,7 +15,7 @@ impl Html {
 
 impl TextTokenizer for Html {
     fn tokenize<T: AsRef<str>>(&mut self, text: T) -> Tokens {
-        let clean_text = html2text::from_read(&text.as_ref().as_bytes()[..], 100);
+        let clean_text = html2text::from_read(text.as_ref().as_bytes(), 100);
         self.tokenizer.tokenize(clean_text)
     }
 }

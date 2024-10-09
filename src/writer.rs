@@ -114,7 +114,6 @@ impl<'wctx> WriterContext<'wctx, TermEntryState> {
         self.insert_term(term);
     }
 
-    #[must_use = "The counter must be reset at the end"]
     pub fn reset_counter(&mut self) {
         self.writer.reset_count()
     }

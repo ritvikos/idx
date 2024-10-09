@@ -5,10 +5,10 @@ extern crate tokio;
 use std::time::Duration;
 
 use idx::{
-    cli::{validate_file, CaseConfig, Cli, NormalizerConfig, TokenizerMode},
+    cli::{CaseConfig, Cli, NormalizerConfig, TokenizerMode},
     descriptor::Descriptor,
     document::Document,
-    engine::{IdxFacade, Query, SearchContext},
+    engine::{IdxFacade, SearchContext},
     normalizer::{
         case::{Lowercase, Uppercase},
         punctuation::Punctuation,
@@ -73,10 +73,6 @@ async fn main() {
 
             NormalizerConfig::Stopwords(config) => {
                 if let Some(path) = config.file {
-                    if let Err(error) = validate_file(&path, ".txt") {
-                        panic!("{error:?}");
-                    };
-
                     match Stopwords::load(&path).await {
                         Ok(stopwords) => pipeline.insert(Box::new(stopwords)),
                         Err(error) => panic!("{error:?}"),
@@ -96,10 +92,6 @@ async fn main() {
 
             NormalizerConfig::Replacer(config) => {
                 if let Some(file) = config.file {
-                    if let Err(error) = validate_file(&file, ".json") {
-                        panic!("{error:?}");
-                    };
-
                     // decide!("txt file", "json file", "support both");
                     // read file line by line
 
@@ -184,15 +176,15 @@ async fn main() {
                 let ctx =
                     SearchContext::new(&coordinator.index, coordinator.tokenizer.clone(), &value);
 
-                let term_doc_count = ctx.doc_term_frequency("doe");
+                let term_doc_count = ctx.document_frequency("doe");
                 let total_docs = ctx.total_docs();
 
                 // println!("{:#?}", coordinator.indexer.core.store);
                 // println!("frequency of word in query: {}");
 
+                println!("{coordinator:#?}");
                 println!("Number of documents containing the term: {term_doc_count:?}");
                 println!("Total documents: {total_docs}");
-                println!("{coordinator:#?}");
             }
         });
     });
