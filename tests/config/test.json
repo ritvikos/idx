@@ -1,0 +1,31 @@
+{
+  "thread": {
+    "read": 1,
+    "index": 1,
+    "write": 1
+  },
+  "tokenizer": {
+    "mode": "standard"
+  },
+  "normalizer": [
+    {
+      "case": "lowercase"
+    },
+    {
+      "punctuation": true
+    },
+    {
+      "stopwords": {
+        "file": "C:/Users/ritvi/Desktop/impl-expl/research/storage/idx/assets/stopwords/en.txt"
+      }
+    },
+    {
+      "replacements": {
+        "pairs": {
+          "key": "value",
+          "key2": "value2"
+        }
+      }
+    }
+  ]
+}
