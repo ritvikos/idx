@@ -1,5 +1,7 @@
 use std::{
     collections::HashSet,
+    fs::File,
+    io::{BufRead, BufReader},
     path::Path,
     sync::{Arc, RwLock},
 };
@@ -7,7 +9,6 @@ use std::{
 use crate::{
     error::{ConfigError, Error},
     normalizer::TextNormalizer,
-    read::FileReader,
     token::Tokens,
 };
 
@@ -24,32 +25,31 @@ impl Stopwords {
         Self(Arc::new(RwLock::new(set)))
     }
 
-    pub async fn load<P: AsRef<Path>>(path: &P) -> Result<Self, Error> {
+    pub fn load<P: AsRef<Path>>(path: &P) -> Result<Self, Error> {
+        let file = File::open(path).unwrap();
+        let reader = BufReader::new(file);
+
         let mut stopwords = Vec::new();
 
-        match FileReader::new().open(path.as_ref()).await {
-            Ok(reader) => match reader.read_lines().await {
-                Ok(mut lines) => {
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if line.split_whitespace().count() != 1 {
-                            return Err(Error::from(ConfigError::Tokenizer(format!(
-                                "Error in txt file. Invalid stopword {line}"
-                            ))));
-                        }
-
-                        stopwords.push(line);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if line.split_whitespace().count() != 1 {
+                        return Err(Error::from(ConfigError::Tokenizer(format!(
+                            "Error in txt file. Invalid stopword: '{}'",
+                            line
+                        ))));
                     }
+                    stopwords.push(line);
                 }
                 Err(error) => {
-                    eprintln!("Error reading lines: {}", error);
-                    return Err(Error::from(ConfigError::File(std::io::ErrorKind::Other)));
+                    eprintln!("Error reading the line: {}", error.to_string());
+                    return Err(Error::from(ConfigError::Reader(
+                        std::io::ErrorKind::InvalidInput,
+                    )));
                 }
-            },
-            Err(error) => {
-                eprintln!("Error reading lines: {}", error);
-                return Err(Error::from(ConfigError::Reader(std::io::ErrorKind::Other)));
             }
-        };
+        }
 
         Ok(Self::new(stopwords))
     }

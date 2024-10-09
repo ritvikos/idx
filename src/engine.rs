@@ -1,6 +1,7 @@
-use crate::{
+use crate::descriptor::Descriptor;
+
+use idx::{
     core::Tf,
-    descriptor::Descriptor,
     index::{Index, Indexer},
     normalizer::NormalizerPipeline,
     token::Tokens,

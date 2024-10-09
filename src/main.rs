@@ -1,3 +1,8 @@
+mod cli;
+mod descriptor;
+mod engine;
+mod read;
+
 extern crate clap;
 extern crate crossbeam_channel;
 extern crate tokio;
@@ -5,10 +10,7 @@ extern crate tokio;
 use std::time::Duration;
 
 use idx::{
-    cli::{CaseConfig, Cli, NormalizerConfig, TokenizerMode},
-    descriptor::Descriptor,
     document::Document,
-    engine::{IdxFacade, SearchContext},
     normalizer::{
         case::{Lowercase, Uppercase},
         punctuation::Punctuation,
@@ -16,6 +18,12 @@ use idx::{
         NormalizerPipeline, Stopwords,
     },
     tokenizer::{Standard, Tokenizer, Whitespace},
+};
+
+use crate::{
+    cli::{CaseConfig, Cli, NormalizerConfig, TokenizerMode},
+    descriptor::Descriptor,
+    engine::{IdxFacade, SearchContext},
 };
 
 use clap::Parser;
@@ -73,7 +81,7 @@ async fn main() {
 
             NormalizerConfig::Stopwords(config) => {
                 if let Some(path) = config.file {
-                    match Stopwords::load(&path).await {
+                    match Stopwords::load(&path) {
                         Ok(stopwords) => pipeline.insert(Box::new(stopwords)),
                         Err(error) => panic!("{error:?}"),
                     };

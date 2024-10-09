@@ -7,7 +7,7 @@ use std::{collections::HashMap, num::NonZeroUsize};
 use clap::Parser;
 use serde::Deserialize;
 
-use crate::error::{ConfigError, Error};
+use idx::error::{ConfigError, Error};
 
 macro_rules! supported_config_formats {
     ($($name:expr => $format:ident),* $(,)?) => {
@@ -119,13 +119,7 @@ pub struct Config {
 pub struct ThreadConfig {
     pub read: NonZeroUsize,
     pub index: NonZeroUsize,
-    pub write: NonZeroUsize,
-}
-
-impl ThreadConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub _write: NonZeroUsize,
 }
 
 impl Default for ThreadConfig {
@@ -133,7 +127,7 @@ impl Default for ThreadConfig {
         Self {
             read: NonZeroUsize::new(1).unwrap(),
             index: NonZeroUsize::new(2).unwrap(),
-            write: NonZeroUsize::new(1).unwrap(),
+            _write: NonZeroUsize::new(1).unwrap(),
         }
     }
 }
@@ -142,12 +136,6 @@ impl Default for ThreadConfig {
 #[serde(rename_all = "snake_case")]
 pub struct TokenizerConfig {
     pub mode: TokenizerMode,
-}
-
-impl TokenizerConfig {
-    pub fn new() -> Self {
-        Self::default()
-    }
 }
 
 #[derive(Debug, Default, Deserialize)]

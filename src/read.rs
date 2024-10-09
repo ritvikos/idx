@@ -2,7 +2,7 @@ extern crate tokio;
 
 use std::path::{Path, PathBuf};
 
-use crate::error::{ConfigError, Error, IoError};
+use idx::error::{ConfigError, Error, IoError};
 
 use tokio::{
     fs::File,
