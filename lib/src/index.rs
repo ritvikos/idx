@@ -16,7 +16,7 @@
 // TFIDFIndex, segment data file contains a list of lists of TFIndexEntry elements of size IndexDepth
 
 use crate::{
-    core::{FileIndex, InvertedIndex, Tf},
+    core::{FileIndex, InvertedIndex, TfIdf},
     map::TermCounter,
     reader::{IndexReader, ReaderContext},
     token::Tokens,
@@ -63,7 +63,7 @@ pub struct Index {
 pub trait Indexer {
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get(&self, term: &str) -> Option<Vec<Tf>>;
+    fn get(&self, term: &str) -> Option<Vec<TfIdf>>;
 }
 
 impl Indexer for Index {
@@ -99,7 +99,7 @@ impl Indexer for Index {
         term_entry.reset_counter()
     }
 
-    fn get(&self, term: &str) -> Option<Vec<Tf>> {
+    fn get(&self, term: &str) -> Option<Vec<TfIdf>> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
@@ -109,25 +109,25 @@ impl Indexer for Index {
             idf_entry.iter_with(|ref_entry| {
                 let index = ref_entry.get_index();
                 let frequency = *ref_entry.get_frequency();
+                let count = ctx.count(index);
 
                 // Always greater than zero, empty documents are not indexed.
-                let count = ctx.count(index);
                 debug_assert!(count > 0);
-
-                let tf = tf(frequency, count);
 
                 let total_documents = ctx.total_documents();
                 let document_frequency = idf_entry.count();
+
+                let tf = tf(frequency, count);
                 let idf = idf(total_documents, document_frequency);
-
                 let tfidf = tf * idf;
-                println!("tfidf: {tfidf}");
 
-                Tf::new(index, tf)
+                TfIdf::new(index, tfidf)
             })
         })
     }
 }
+
+impl Index {}
 
 // FIXME: Need more robust conversion mechanism, as it can overflow.
 pub fn tf(frequency: usize, word_count: usize) -> f32 {

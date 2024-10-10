@@ -119,7 +119,7 @@ pub struct Config {
 pub struct ThreadConfig {
     pub read: NonZeroUsize,
     pub index: NonZeroUsize,
-    pub _write: NonZeroUsize,
+    pub write: NonZeroUsize,
 }
 
 impl Default for ThreadConfig {
@@ -127,7 +127,7 @@ impl Default for ThreadConfig {
         Self {
             read: NonZeroUsize::new(1).unwrap(),
             index: NonZeroUsize::new(2).unwrap(),
-            _write: NonZeroUsize::new(1).unwrap(),
+            write: NonZeroUsize::new(1).unwrap(),
         }
     }
 }

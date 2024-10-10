@@ -9,14 +9,37 @@ use hashbrown::{
 
 use crate::util::Counter;
 
-// TODO: Decide type for `value` field.
+// // TODO: Decide type for `value` field.
+// #[derive(Debug)]
+// pub struct Tf {
+//     index: usize,
+//     value: f32,
+// }
+
+// impl Tf {
+//     #[inline]
+//     pub fn new(index: usize, value: f32) -> Self {
+//         Self { index, value }
+//     }
+
+//     #[inline]
+//     pub fn get_index(&self) -> usize {
+//         self.index
+//     }
+
+//     #[inline]
+//     pub fn get_value(&self) -> f32 {
+//         self.value
+//     }
+// }
+
 #[derive(Debug)]
-pub struct Tf {
+pub struct TfIdf {
     index: usize,
     value: f32,
 }
 
-impl Tf {
+impl TfIdf {
     #[inline]
     pub fn new(index: usize, value: f32) -> Self {
         Self { index, value }
@@ -199,8 +222,8 @@ impl IdfEntry {
         }
     }
 
-    pub fn iter_with(&self, f: impl FnMut(&RefEntry) -> Tf) -> Vec<Tf> {
-        self.iter().map(f).collect::<Vec<Tf>>()
+    pub fn iter_with<O>(&self, f: impl FnMut(&RefEntry) -> O) -> Vec<O> {
+        self.iter().map(f).collect::<Vec<O>>()
     }
 
     // #[inline]

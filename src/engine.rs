@@ -1,7 +1,7 @@
 use crate::descriptor::Descriptor;
 
 use idx::{
-    core::Tf,
+    core::TfIdf,
     index::{Index, Indexer},
     normalizer::NormalizerPipeline,
     token::Tokens,
@@ -62,7 +62,7 @@ impl IdxFacade {
     // }
 
     // FIXME: tf
-    pub fn get(&self, query: Query) -> Option<Vec<Tf>> {
+    pub fn get(&self, query: Query) -> Option<Vec<TfIdf>> {
         let mut tokenizer = self.tokenizer.clone();
         let mut pipeline = self.pipeline.clone();
 

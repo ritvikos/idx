@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Formatter},
-    ops::{Deref, DerefMut},
+    ops::Deref,
 };
 
 use crate::{token::Tokens, tokenizer::Tokenizer};
@@ -35,21 +35,14 @@ impl Deref for Document {
     }
 }
 
-impl DerefMut for Document {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl AsRef<str> for Document {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
 impl Display for Document {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
-    }
-}
-
-impl AsRef<str> for Document {
-    fn as_ref(&self) -> &str {
-        &self.0
     }
 }
