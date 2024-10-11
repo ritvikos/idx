@@ -1,6 +1,7 @@
 mod cli;
 mod descriptor;
 mod engine;
+mod query;
 mod read;
 
 extern crate clap;
@@ -11,6 +12,7 @@ use std::time::Duration;
 
 use idx::{
     document::Document,
+    index::Index,
     normalizer::{
         case::{Lowercase, Uppercase},
         punctuation::Punctuation,
@@ -23,7 +25,7 @@ use idx::{
 use crate::{
     cli::{CaseConfig, Cli, NormalizerConfig, TokenizerMode},
     descriptor::Descriptor,
-    engine::{IdxFacade, SearchContext},
+    engine::IdxFacade,
 };
 
 use clap::Parser;
@@ -161,38 +163,20 @@ async fn main() {
     (0..thread_config.index.get()).for_each(|_| {
         let rx = index_rx.clone();
 
-        let mut coordinator = IdxFacade::new(
+        let mut facade: IdxFacade<Index> = IdxFacade::new(
             INDEX_CAPACITY,
             THRESHOLD_CAPACITY,
             tokenizer.clone(),
             pipeline.clone(),
         );
 
-        // let mut indexer = Indexer::new(INDEX_CAPACITY, THRESHOLD_CAPACITY);
         let value = pipeline.clone();
 
         std::thread::spawn(move || loop {
             while let Ok(descriptor) = rx.recv() {
-                // indexer.insert(descriptor);
-                // println!("{indexer:#?}");
+                facade.insert(descriptor);
 
-                coordinator.insert(descriptor);
-                // println!("{coordinator:#?}");
-
-                // let term_doc_count = coordinator.term_doc_count("doe");
-                // let total_docs = coordinator.total_docs();
-                let ctx =
-                    SearchContext::new(&coordinator.index, coordinator.tokenizer.clone(), &value);
-
-                let term_doc_count = ctx.document_frequency("doe");
-                let total_docs = ctx.total_docs();
-
-                // println!("{:#?}", coordinator.indexer.core.store);
-                // println!("frequency of word in query: {}");
-
-                println!("{coordinator:#?}");
-                println!("Number of documents containing the term: {term_doc_count:?}");
-                println!("Total documents: {total_docs}");
+                println!("{facade:#?}");
             }
         });
     });

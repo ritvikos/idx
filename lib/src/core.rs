@@ -9,30 +9,6 @@ use hashbrown::{
 
 use crate::util::Counter;
 
-// // TODO: Decide type for `value` field.
-// #[derive(Debug)]
-// pub struct Tf {
-//     index: usize,
-//     value: f32,
-// }
-
-// impl Tf {
-//     #[inline]
-//     pub fn new(index: usize, value: f32) -> Self {
-//         Self { index, value }
-//     }
-
-//     #[inline]
-//     pub fn get_index(&self) -> usize {
-//         self.index
-//     }
-
-//     #[inline]
-//     pub fn get_value(&self) -> f32 {
-//         self.value
-//     }
-// }
-
 #[derive(Debug)]
 pub struct TfIdf {
     index: usize,

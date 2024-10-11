@@ -1,3 +1,10 @@
+//! The [`CoreIndex`] is the core component that handles indexing operations.
+//! Internally, it manages inverted-index, file-index, term-counter.
+//!
+//! Inverted Index
+//! The [`InvertedIndex`] handles the core inverted index data structure and
+//! exposes methods to perform operations.
+
 // Persistent Index
 
 // file path index stored under: file_index_<thread_id> dir.
@@ -22,20 +29,6 @@ use crate::{
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
 };
-
-/*
-TF:
-file_index: -
-frequency: -
-
-IDF:
-no of doc containing the term: -
-total doc: -
-*/
-
-// TODO
-// - Fix 7 bytes wasted (padding), due to tokenizer.
-// - Lockfree data structures, to index and retrieve in separate threads, independently.
 
 /// # Indexer
 ///
@@ -92,7 +85,7 @@ impl Indexer for Index {
         let file_entry = WriterContext::<FileEntryState>::new(writer);
         let mut term_entry = file_entry.entry(path, word_count);
 
-        tokens.iter_mut().for_each(|token| {
+        tokens.for_each_mut(|token| {
             term_entry.insert_term_with(|| std::mem::take(token));
         });
 
@@ -117,8 +110,8 @@ impl Indexer for Index {
                 let total_documents = ctx.total_documents();
                 let document_frequency = idf_entry.count();
 
-                let tf = tf(frequency, count);
-                let idf = idf(total_documents, document_frequency);
+                let tf = self.tf(frequency, count);
+                let idf = self.idf(total_documents, document_frequency);
                 let tfidf = tf * idf;
 
                 TfIdf::new(index, tfidf)
@@ -127,18 +120,16 @@ impl Indexer for Index {
     }
 }
 
-impl Index {}
-
-// FIXME: Need more robust conversion mechanism, as it can overflow.
-pub fn tf(frequency: usize, word_count: usize) -> f32 {
-    frequency as f32 / word_count as f32
-}
-
-pub fn idf(total_documents: usize, document_frequency: usize) -> f32 {
-    (total_documents as f32 / document_frequency as f32).log10()
-}
-
 impl Index {
+    // FIXME: Need more robust conversion mechanism, as it can overflow.
+    pub fn tf(&self, frequency: usize, word_count: usize) -> f32 {
+        frequency as f32 / word_count as f32
+    }
+
+    pub fn idf(&self, total_documents: usize, document_frequency: usize) -> f32 {
+        (total_documents as f32 / document_frequency as f32).log10()
+    }
+
     /// Number of documents containing the term.
     #[inline]
     pub fn document_frequency(&self, term: &str) -> Option<usize> {
@@ -164,6 +155,7 @@ pub struct CoreIndex {
 }
 
 impl CoreIndex {
+    /// Creates a new instance of [`CoreIndex`]
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -173,12 +165,26 @@ impl CoreIndex {
         }
     }
 
-    /// Provides read access via [`IndexReader`]
+    /// The `CoreIndex` never interacts with external environment
+    /// directly for READ operations.
+    ///
+    /// [`IndexReader`] provides READ access to the index.
+    ///
+    /// # See Also
+    ///
+    /// - [`IndexWriter`]: Provides WRITE access to the index.
     pub fn reader(&self) -> IndexReader {
         IndexReader::new(&self.store, &self.index, &self.count)
     }
 
-    /// Provides write access via [`IndexWriter`]
+    /// The `CoreIndex` never interacts with external environment
+    /// directly for WRITE operations.
+    ///
+    /// [`IndexWriter`] provides WRITE access to the index.
+    ///
+    /// # See Also
+    ///
+    /// - [`IndexReader`]: Provides READ access to the index.
     pub fn writer(&mut self) -> IndexWriter {
         IndexWriter::new(&mut self.store, &mut self.index, &mut self.count)
     }

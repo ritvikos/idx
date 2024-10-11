@@ -1,4 +1,4 @@
-use crate::descriptor::Descriptor;
+use crate::{descriptor::Descriptor, query::Query};
 
 use idx::{
     core::TfIdf,
@@ -15,13 +15,13 @@ pub trait Engine {
 
 // TODO: Partition
 #[derive(Debug)]
-pub struct IdxFacade {
-    pub index: Index,
+pub struct IdxFacade<I: Indexer = Index> {
+    pub index: I,
     pub tokenizer: Tokenizer,
     pub pipeline: NormalizerPipeline,
 }
 
-impl IdxFacade {
+impl<I: Indexer> IdxFacade<I> {
     pub fn new(
         capacity: usize,
         threshold: usize,
@@ -29,7 +29,7 @@ impl IdxFacade {
         pipeline: NormalizerPipeline,
     ) -> Self {
         Self {
-            index: Index::new(capacity, threshold),
+            index: Indexer::new(capacity, threshold),
             tokenizer,
             pipeline,
         }
@@ -51,17 +51,6 @@ impl IdxFacade {
         self.index.insert(path.into(), word_count, tokens);
     }
 
-    // pub fn get(&self, query: Query) {
-    //     let mut tokenizer = self.tokenizer.clone();
-
-    //     let tokens = query.tokenize(&mut tokenizer);
-    //     let word_count = tokens.count();
-
-    //     let term_doc_count = self.term_doc_count(query.as_ref());
-    //     let total_docs = self.total_docs();
-    // }
-
-    // FIXME: tf
     pub fn get(&self, query: Query) -> Option<Vec<TfIdf>> {
         let mut tokenizer = self.tokenizer.clone();
         let mut pipeline = self.pipeline.clone();
@@ -72,88 +61,60 @@ impl IdxFacade {
             pipeline.run(&mut tokens);
         }
 
-        // let word_count = tokens.count();
-        let term = query.0;
-        self.index.get(&term)
-    }
-
-    /// Number of documents containing the term.
-    #[inline]
-    pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        self.index.document_frequency(term)
-    }
-
-    /// Total number of indexed documents.
-    #[inline]
-    pub fn total_docs(&self) -> usize {
-        self.index.total_docs()
+        self.index.get(*query)
     }
 }
 
-#[derive(Debug)]
-pub struct SearchContext<'ctx> {
-    index: &'ctx Index,
-    tokenizer: Tokenizer,
-    pipeline: &'ctx NormalizerPipeline,
-}
+#[cfg(test)]
+mod tests {
+    use idx::{
+        index::Index,
+        normalizer::{case::Lowercase, punctuation::Punctuation, NormalizerPipeline, Stopwords},
+        tokenizer::{Standard, Tokenizer},
+    };
 
-impl<'ctx> SearchContext<'ctx> {
-    #[inline]
-    pub fn new(
-        index: &'ctx Index,
-        tokenizer: Tokenizer,
-        pipeline: &'ctx NormalizerPipeline,
-    ) -> Self {
-        Self {
-            index,
-            tokenizer,
-            pipeline,
+    use crate::{
+        descriptor::Descriptor,
+        engine::{IdxFacade, Query},
+    };
+
+    fn tiny_test_corpus() -> Vec<String> {
+        ["the cat sat on the mat", "the cat sat", "the dog barked"]
+            .iter()
+            .map(|document| document.to_string())
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn test_indexer_and_engine() {
+        let corpus = tiny_test_corpus();
+        let tokenizer = Tokenizer::Standard(Standard::new());
+
+        let mut pipeline = NormalizerPipeline::new();
+        pipeline.insert(Box::new(Lowercase::new()));
+        pipeline.insert(Box::new(Punctuation::new()));
+        pipeline.insert(Box::new(
+            Stopwords::load(&"assets/stopwords/en.txt").unwrap(),
+        ));
+
+        let mut engine: IdxFacade<Index> = IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
+
+        for (idx, document) in corpus.iter().enumerate() {
+            let descriptor = Descriptor::new(format!("path_{}", idx), document.into());
+            engine.insert(descriptor);
         }
-    }
 
-    /// Number of documents containing the term.
-    #[inline]
-    pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        self.index.document_frequency(term)
-    }
+        // let target = "foxes"; // expected: 7
+        let target = "cat";
+        // let term_doc_count = engine.document_frequency(&target);
+        // let total_docs = engine.total_docs(); // expected: 20
 
-    /// Total number of indexed documents
-    #[inline]
-    pub fn total_docs(&self) -> usize {
-        self.index.total_docs()
-    }
+        let query = Query::new(target);
+        let tf = engine.get(query);
 
-    pub fn search(&self) {
-        // tf: Number of times term t appears in document d / Total number of terms in document
-        // idf: total number of documents / number of documents containing term
-    }
-}
-
-#[derive(Debug)]
-pub struct Query(String);
-
-impl Query {
-    #[inline]
-    pub fn new(value: String) -> Self {
-        Self(value)
-    }
-
-    #[inline]
-    pub fn tokenize(&self, tokenizer: &mut Tokenizer) -> Tokens {
-        tokenizer.tokenize(&self.0)
-    }
-}
-
-impl<T: Into<String>> From<T> for Query {
-    #[inline]
-    fn from(value: T) -> Self {
-        Query(value.into())
-    }
-}
-
-impl AsRef<str> for Query {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
+        println!("engine: {engine:#?}");
+        // println!("term_doc_count: {term_doc_count:?}");
+        // println!("total_docs: {total_docs}");
+        println!("tf: {tf:#?}");
     }
 }
