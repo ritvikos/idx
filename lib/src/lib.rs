@@ -3,7 +3,6 @@ pub mod document;
 pub mod error;
 pub mod filter;
 pub mod index;
-pub mod map;
 pub mod normalizer;
 pub mod reader;
 pub mod token;

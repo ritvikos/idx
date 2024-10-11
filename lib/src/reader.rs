@@ -1,7 +1,4 @@
-use crate::{
-    core::{FileEntry, FileIndex, IdfEntry, InvertedIndex},
-    map::TermCounter,
-};
+use crate::core::{FileEntry, FileIndex, IdfEntry, InvertedIndex, TermCounter};
 
 pub struct IndexReader<'r> {
     store: &'r FileIndex,

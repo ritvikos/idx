@@ -1,8 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    core::{FileEntry, FileIndex, InvertedIndex, TfEntry},
-    map::TermCounter,
+    core::{FileEntry, FileIndex, InvertedIndex, TermCounter, TfEntry},
     token::Token,
 };
 

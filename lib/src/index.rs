@@ -23,8 +23,7 @@
 // TFIDFIndex, segment data file contains a list of lists of TFIndexEntry elements of size IndexDepth
 
 use crate::{
-    core::{FileIndex, InvertedIndex, TfIdf},
-    map::TermCounter,
+    core::{FileIndex, InvertedIndex, TermCounter, TfIdf},
     reader::{IndexReader, ReaderContext},
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
