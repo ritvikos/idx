@@ -5,23 +5,6 @@
 //! The [`InvertedIndex`] handles the core inverted index data structure and
 //! exposes methods to perform operations.
 
-// Persistent Index
-
-// file path index stored under: file_index_<thread_id> dir.
-// tfidf index stored under:     tfidf_index_<thread_id> dir.
-
-// For each flush of any index type,
-// one segment data file and one of more segment metadata files are created.
-
-// Segment metadata files contain hashtable entries for each index type.
-// Example: TFIDF Index segment metadata will contain list of IFDIndexEntry elements (array) in binary format.
-//
-// Segment data files contain auxiliary data structure elements.
-// In FilePathIndex, the auxiliary structure is actual full file path and corresponding element
-// from metadata file stores an offset to position where full file path can be found in the
-// data file.
-// TFIDFIndex, segment data file contains a list of lists of TFIndexEntry elements of size IndexDepth
-
 use crate::{
     core::{FileIndex, InvertedIndex, TermCounter, TfIdf},
     reader::{IndexReader, ReaderContext},
@@ -39,12 +22,6 @@ use crate::{
 /// and perform a merge operation to generate a global index view.
 #[derive(Debug)]
 pub struct Index {
-    // The FilePathIndex component is a memory intensive component and is responsible for computing a file index from
-    // the full file path and storing the index and the full file path into the
-    // inverted index in order to be retrieved during search operations. The
-    // file content, under the form of a list of extracted tokens, is then indexed by the TFIDFIndex, which is also a memory-intensive component
-    // and that indexes the tokens and keeps track of the term frequencies
-    // and inverse document frequencies necessary for computing the relevance score.
     pub core: CoreIndex,
 
     pub capacity: usize,
@@ -187,103 +164,4 @@ impl CoreIndex {
     pub fn writer(&mut self) -> IndexWriter {
         IndexWriter::new(&mut self.store, &mut self.index, &mut self.count)
     }
-}
-
-#[cfg(test)]
-mod tests {
-
-    // const INDEX_CAP: usize = 100;
-    // const CAPACITY: usize = 100;
-    // const THRESHOLD: usize = 80;
-
-    #[test]
-    fn test_idx_api() {
-        // TODO:
-        // 1. Document and File Path
-        // 2. Insert in file index, get file_path_index
-        // 3. Tokenize
-        // 4. Normalize Pipeline
-        // 5. Descriptor (document and file path)
-
-        // for tokens/terms in document, insert to inverted index
-        // 6. Insert in inverted index
-
-        // let mut indexer = CoreIndex::with_capacity(20);
-        // let mut writer = indexer.writer();
-        // writer.insert_counter("t".into());
-
-        // let reader = indexer.reader();
-        // let entries = reader.get_term_entries("t");
-
-        // let mut index = InvertedIndex::with_capacity(INDEX_CAP);
-        // let mut file_index = FileIndex::with_capacity(INDEX_CAP);
-
-        // let file_path_index = file_index.insert(FileEntry::new(path, word_count));
-        // let mut tf_entry = TfEntry::new(file_path_index, frequency);
-
-        // index.insert(term, tf_entry);
-
-        // let total_doc = 100;
-        // let document = "he is good boy".to_string();
-        // let term = "boy".to_string();
-
-        // index.insert(term, )
-    }
-
-    // #[test]
-    // fn test_index_idf_entry_basic() {
-    //     let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     assert_eq!(idf.entries.capacity(), 100);
-    //     // assert_eq!(*idf.file_count, 0);
-    //     assert_eq!(idf.entries.len(), 0);
-    //     assert_eq!(idf.threshold, 0);
-    // }
-
-    // // #[test]
-    // // fn test_index_idf_entry_with_file_count() {
-    // //     let idf = IdfEntry::new(100).with_file_count(Counter::new(5));
-    // //     assert_eq!(*idf.file_count, 5);
-    // // }
-
-    // #[test]
-    // fn test_index_idf_entry_with_limit() {
-    //     let idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     assert_eq!(idf.threshold, 80);
-    // }
-
-    // #[test]
-    // fn test_index_idf_entry_insert() {
-    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     idf.insert(TfEntry::new(1, 3));
-    //     assert_eq!(idf.entries.len(), 1);
-    //     assert_eq!(idf.entries[0].index, 1);
-    //     assert_eq!(idf.entries[0].frequency, 3);
-    // }
-
-    // #[test]
-    // fn test_index_idf_entry_should_flush() {
-    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     (1..=81).for_each(|_| {
-    //         idf.insert(TfEntry::default());
-    //     });
-    //     assert!(idf.should_flush());
-    // }
-
-    // #[test]
-    // fn test_index_idf_entry_should_not_flush() {
-    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     (1..=80).for_each(|_| {
-    //         idf.insert(TfEntry::default());
-    //     });
-    //     assert!(!idf.should_flush());
-    // }
-
-    // #[test]
-    // fn test_index_idf_entry_range_calculation() {
-    //     let mut idf = IdfEntry::with_capacity(CAPACITY, THRESHOLD);
-    //     (1..=50).for_each(|_| {
-    //         idf.insert(TfEntry::default());
-    //     });
-    //     assert_eq!(idf.range(), 50);
-    // }
 }
