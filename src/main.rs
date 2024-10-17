@@ -2,7 +2,6 @@ mod cli;
 mod descriptor;
 mod engine;
 mod query;
-mod read;
 
 extern crate clap;
 extern crate crossbeam_channel;
