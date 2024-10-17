@@ -103,11 +103,6 @@ impl<T: Into<Token> + PartialEq> TokenVec<T> {
         self.iter().filter(|&element| element == term).count()
     }
 
-    #[inline]
-    pub fn iter(&self) -> Iter<'_, T> {
-        self.0.iter()
-    }
-
     pub fn for_each_mut<F>(&mut self, mut f: F)
     where
         F: FnMut(&mut T),
@@ -115,6 +110,11 @@ impl<T: Into<Token> + PartialEq> TokenVec<T> {
         self.iter_mut().for_each(|item| {
             f(item);
         })
+    }
+
+    #[inline]
+    fn iter(&self) -> Iter<'_, T> {
+        self.0.iter()
     }
 
     #[inline]

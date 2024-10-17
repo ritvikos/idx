@@ -11,14 +11,17 @@ use crate::util::Counter;
 
 #[derive(Debug)]
 pub struct TfIdf {
+    /// File index
     index: usize,
-    value: f32,
+
+    /// Tf-Idf score
+    score: f32,
 }
 
 impl TfIdf {
     #[inline]
-    pub fn new(index: usize, value: f32) -> Self {
-        Self { index, value }
+    pub fn new(index: usize, score: f32) -> Self {
+        Self { index, score }
     }
 
     #[inline]
@@ -27,8 +30,8 @@ impl TfIdf {
     }
 
     #[inline]
-    pub fn get_value(&self) -> f32 {
-        self.value
+    pub fn get_score(&self) -> f32 {
+        self.score
     }
 }
 

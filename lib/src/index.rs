@@ -97,7 +97,7 @@ impl Indexer for Index {
 }
 
 impl Index {
-    // FIXME: Need more robust conversion mechanism, as it can overflow.
+    // FIXME: Need more robust conversion mechanism.
     pub fn tf(&self, frequency: usize, word_count: usize) -> f32 {
         frequency as f32 / word_count as f32
     }
