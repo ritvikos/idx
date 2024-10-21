@@ -6,7 +6,7 @@
 //! exposes methods to perform operations.
 
 use crate::{
-    core::{FileIndex, InvertedIndex, TermCounter, TfIdf},
+    core::{Collection, FileIndex, InvertedIndex, Result, TermCounter, TfIdf},
     reader::{IndexReader, ReaderContext},
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
@@ -32,7 +32,7 @@ pub struct Index {
 pub trait Indexer {
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get(&self, term: &str) -> Option<Vec<TfIdf>>;
+    fn get(&self, term: &str) -> Option<Result>;
 }
 
 impl Indexer for Index {
@@ -68,7 +68,7 @@ impl Indexer for Index {
         term_entry.reset_counter()
     }
 
-    fn get(&self, term: &str) -> Option<Vec<TfIdf>> {
+    fn get(&self, term: &str) -> Option<Result> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
@@ -93,6 +93,7 @@ impl Indexer for Index {
                 TfIdf::new(index, tfidf)
             })
         })
+        .and_then(|tfidf| Some(Result::from(tfidf)))
     }
 }
 

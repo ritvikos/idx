@@ -307,6 +307,42 @@ impl PartialEq for TfEntry {
     }
 }
 
+#[derive(Debug)]
+pub struct Result {
+    inner: Vec<TfIdf>,
+}
+
+impl Result {
+    #[inline]
+    pub fn new(tfidf: Vec<TfIdf>) -> Self {
+        Self::from(tfidf)
+    }
+}
+
+impl From<Vec<TfIdf>> for Result {
+    fn from(value: Vec<TfIdf>) -> Self {
+        Self { inner: value }
+    }
+}
+
+#[derive(Debug)]
+pub struct Collection {
+    inner: Vec<Result>,
+}
+
+impl Collection {
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            inner: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn insert(&mut self, result: Result) {
+        self.inner.push(result)
+    }
+}
+
 #[derive(Debug, Default)]
 // pub struct TermCounter<K>
 // where

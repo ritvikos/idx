@@ -1,7 +1,7 @@
 use crate::{descriptor::Descriptor, query::Query};
 
 use idx::{
-    core::TfIdf,
+    core::{Collection, TfIdf},
     index::{Index, Indexer},
     normalizer::NormalizerPipeline,
     token::Tokens,
@@ -51,7 +51,7 @@ impl<I: Indexer> IdxFacade<I> {
         self.index.insert(path.into(), word_count, tokens);
     }
 
-    pub fn get(&self, query: Query) -> Option<Vec<TfIdf>> {
+    pub fn get(&self, query: Query) -> Collection {
         let mut tokenizer = self.tokenizer.clone();
         let mut pipeline = self.pipeline.clone();
 
@@ -61,7 +61,16 @@ impl<I: Indexer> IdxFacade<I> {
             pipeline.run(&mut tokens);
         }
 
-        self.index.get(*query)
+        let capacity = tokens.count();
+        let mut collection = Collection::with_capacity(capacity);
+
+        tokens.for_each_mut(|token| {
+            if let Some(result) = self.index.get(token) {
+                collection.insert(result);
+            }
+        });
+
+        collection
     }
 }
 
@@ -105,7 +114,7 @@ mod tests {
         }
 
         // let target = "foxes"; // expected: 7
-        let target = "cat";
+        let target = "cat dog";
         // let term_doc_count = engine.document_frequency(&target);
         // let total_docs = engine.total_docs(); // expected: 20
 
