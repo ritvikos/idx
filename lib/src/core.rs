@@ -9,7 +9,7 @@ use hashbrown::{
 
 use crate::util::Counter;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TfIdf {
     /// File index
     index: usize,
@@ -308,18 +308,11 @@ impl PartialEq for TfEntry {
 }
 
 #[derive(Debug)]
-pub struct Result {
+pub struct Field {
     inner: Vec<TfIdf>,
 }
 
-impl Result {
-    #[inline]
-    pub fn new(tfidf: Vec<TfIdf>) -> Self {
-        Self::from(tfidf)
-    }
-}
-
-impl From<Vec<TfIdf>> for Result {
+impl From<Vec<TfIdf>> for Field {
     fn from(value: Vec<TfIdf>) -> Self {
         Self { inner: value }
     }
@@ -327,7 +320,7 @@ impl From<Vec<TfIdf>> for Result {
 
 #[derive(Debug)]
 pub struct Collection {
-    inner: Vec<Result>,
+    inner: Vec<Field>,
 }
 
 impl Collection {
@@ -338,8 +331,8 @@ impl Collection {
         }
     }
 
-    pub fn insert(&mut self, result: Result) {
-        self.inner.push(result)
+    pub fn insert(&mut self, field: Field) {
+        self.inner.push(field)
     }
 }
 

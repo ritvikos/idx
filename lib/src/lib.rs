@@ -4,6 +4,7 @@ pub mod error;
 pub mod filter;
 pub mod index;
 pub mod normalizer;
+pub mod rank;
 pub mod reader;
 pub mod token;
 pub mod tokenizer;

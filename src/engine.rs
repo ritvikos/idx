@@ -1,7 +1,7 @@
 use crate::{descriptor::Descriptor, query::Query};
 
 use idx::{
-    core::{Collection, TfIdf},
+    core::Collection,
     index::{Index, Indexer},
     normalizer::NormalizerPipeline,
     token::Tokens,
@@ -65,9 +65,7 @@ impl<I: Indexer> IdxFacade<I> {
         let mut collection = Collection::with_capacity(capacity);
 
         tokens.for_each_mut(|token| {
-            if let Some(result) = self.index.get(token) {
-                collection.insert(result);
-            }
+            self.index.get(token).map(|field| collection.insert(field));
         });
 
         collection

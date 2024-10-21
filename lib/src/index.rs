@@ -6,7 +6,8 @@
 //! exposes methods to perform operations.
 
 use crate::{
-    core::{Collection, FileIndex, InvertedIndex, Result, TermCounter, TfIdf},
+    core::{Field, FileIndex, IdfEntry, InvertedIndex, RefEntry, TermCounter, TfIdf},
+    rank::{Bm25, Ranker},
     reader::{IndexReader, ReaderContext},
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
@@ -32,7 +33,7 @@ pub struct Index {
 pub trait Indexer {
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get(&self, term: &str) -> Option<Result>;
+    fn get(&self, term: &str) -> Option<Field>;
 }
 
 impl Indexer for Index {
@@ -53,9 +54,13 @@ impl Indexer for Index {
     // The file store and inverted index won't sync,
     // ends up with potentially corrupted state.
 
-    // Approach (runtime overhead):
+    // Approach 1 (runtime overhead):
     // Maintain write-ahead logs to re-construct the
     // core index in correct state.
+
+    // Approach 2:
+    // On startup, validate for such scenarios,
+    // before re-constructing the in-memory structure.
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
         let writer = self.core.writer();
         let file_entry = WriterContext::<FileEntryState>::new(writer);
@@ -68,7 +73,7 @@ impl Indexer for Index {
         term_entry.reset_counter()
     }
 
-    fn get(&self, term: &str) -> Option<Result> {
+    fn get(&self, term: &str) -> Option<Field> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
@@ -93,7 +98,7 @@ impl Indexer for Index {
                 TfIdf::new(index, tfidf)
             })
         })
-        .and_then(|tfidf| Some(Result::from(tfidf)))
+        .map(Field::from)
     }
 }
 
@@ -107,21 +112,18 @@ impl Index {
         (total_documents as f32 / document_frequency as f32).log10()
     }
 
-    /// Number of documents containing the term.
-    #[inline]
-    pub fn document_frequency(&self, term: &str) -> Option<usize> {
-        let reader = self.core.reader();
-        let ctx = ReaderContext::new(reader);
-        ctx.document_frequency(term)
-    }
+    // pub fn iter_entries<F>(&self, term: &str, f: F) -> Option<Field>
+    // where
+    //     F: Fn(&IdfEntry, &RefEntry) -> TfIdf,
+    // {
+    //     let reader = self.core.reader();
+    //     let ctx = ReaderContext::new(reader);
 
-    /// Number of indexed documents.
-    #[inline]
-    pub fn total_docs(&self) -> usize {
-        let reader = self.core.reader();
-        let ctx = ReaderContext::new(reader);
-        ctx.total_documents()
-    }
+    //     ctx.get_entry_with(term, |idf_entry| {
+    //         idf_entry.iter_with(|ref_entry| f(idf_entry, ref_entry))
+    //     })
+    //     .map(Field::from)
+    // }
 }
 
 #[derive(Debug)]
