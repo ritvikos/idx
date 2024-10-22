@@ -6,9 +6,9 @@
 //! exposes methods to perform operations.
 
 use crate::{
-    core::{Field, FileIndex, IdfEntry, InvertedIndex, RefEntry, TermCounter, TfIdf},
-    rank::{Bm25, Ranker},
-    reader::{IndexReader, ReaderContext},
+    core::{Field, FileIndex, InvertedIndex, RefEntry, TermCounter, TfIdf},
+    rank::{Ranker, TfIdfRanker},
+    reader::IndexReader,
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
 };
@@ -74,57 +74,25 @@ impl Indexer for Index {
     }
 
     fn get(&self, term: &str) -> Option<Field> {
-        let reader = self.core.reader();
-        let ctx = ReaderContext::new(reader);
-
-        ctx.get_entry_with(term, |idf_entry| {
-            debug_assert!(idf_entry.count() > 0);
-
-            idf_entry.iter_with(|ref_entry| {
-                let index = ref_entry.get_index();
-                let frequency = *ref_entry.get_frequency();
-                let count = ctx.count(index);
-
-                // Always greater than zero, empty documents are not indexed.
-                debug_assert!(count > 0);
-
-                let total_documents = ctx.total_documents();
-                let document_frequency = idf_entry.count();
-
-                let tf = self.tf(frequency, count);
-                let idf = self.idf(total_documents, document_frequency);
-                let tfidf = tf * idf;
-
-                TfIdf::new(index, tfidf)
-            })
-        })
-        .map(Field::from)
+        let ranker = TfIdfRanker::new(&self.core);
+        ranker.get(term)
     }
 }
 
-impl Index {
-    // FIXME: Need more robust conversion mechanism.
-    pub fn tf(&self, frequency: usize, word_count: usize) -> f32 {
-        frequency as f32 / word_count as f32
-    }
+// impl Index {
+// pub fn iter_entries<F>(&self, term: &str, f: F) -> Option<Field>
+// where
+//     F: Fn(&IdfEntry, &RefEntry) -> TfIdf,
+// {
+//     let reader = self.core.reader();
+//     let ctx = ReaderContext::new(reader);
 
-    pub fn idf(&self, total_documents: usize, document_frequency: usize) -> f32 {
-        (total_documents as f32 / document_frequency as f32).log10()
-    }
-
-    // pub fn iter_entries<F>(&self, term: &str, f: F) -> Option<Field>
-    // where
-    //     F: Fn(&IdfEntry, &RefEntry) -> TfIdf,
-    // {
-    //     let reader = self.core.reader();
-    //     let ctx = ReaderContext::new(reader);
-
-    //     ctx.get_entry_with(term, |idf_entry| {
-    //         idf_entry.iter_with(|ref_entry| f(idf_entry, ref_entry))
-    //     })
-    //     .map(Field::from)
-    // }
-}
+//     ctx.get_entry_with(term, |idf_entry| {
+//         idf_entry.iter_with(|ref_entry| f(idf_entry, ref_entry))
+//     })
+//     .map(Field::from)
+// }
+// }
 
 #[derive(Debug)]
 pub struct CoreIndex {
