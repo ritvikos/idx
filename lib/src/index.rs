@@ -6,9 +6,9 @@
 //! exposes methods to perform operations.
 
 use crate::{
-    core::{Field, FileIndex, InvertedIndex, RefEntry, TermCounter, TfIdf},
+    core::{Field, FileIndex, InvertedIndex, TermCounter},
     rank::{Ranker, TfIdfRanker},
-    reader::IndexReader,
+    reader::{IndexReader, ReaderContext},
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
 };
@@ -24,9 +24,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Index {
     pub core: CoreIndex,
-
     pub capacity: usize,
-
     pub threshold: usize,
 }
 
@@ -59,7 +57,7 @@ impl Indexer for Index {
     // core index in correct state.
 
     // Approach 2:
-    // On startup, validate for such scenarios,
+    // On startup, validate for such scenarios and handle,
     // before re-constructing the in-memory structure.
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
         let writer = self.core.writer();
@@ -74,7 +72,10 @@ impl Indexer for Index {
     }
 
     fn get(&self, term: &str) -> Option<Field> {
-        let ranker = TfIdfRanker::new(&self.core);
+        let reader = self.core.reader();
+        let ctx = ReaderContext::new(reader);
+
+        let ranker = TfIdfRanker::new(&ctx);
         ranker.get(term)
     }
 }

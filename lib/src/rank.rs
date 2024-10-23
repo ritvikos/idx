@@ -1,48 +1,45 @@
 use crate::{
     core::{Field, TfIdf},
-    index::CoreIndex,
     reader::ReaderContext,
 };
 
 pub trait Ranker<'a> {
-    fn new(index: &'a CoreIndex) -> Self;
+    fn new(reader: &'a ReaderContext<'a>) -> Self;
     fn get(&self, term: &str) -> Option<Field>;
 }
 
 pub struct Bm25<'a> {
-    index: &'a CoreIndex,
+    reader: &'a ReaderContext<'a>,
 }
 
 impl<'a> Ranker<'a> for Bm25<'a> {
     #[inline]
-    fn new(index: &'a CoreIndex) -> Self {
-        Self { index }
+    fn new(reader: &'a ReaderContext<'a>) -> Self {
+        Self { reader }
     }
 
     fn get(&self, term: &str) -> Option<Field> {
-        let reader = self.index.reader();
-        let ctx = ReaderContext::new(reader);
+        let total_documents = self.reader.total_documents();
+        let document_frequency = self.reader.document_frequency(term).unwrap();
 
-        let total_documents = ctx.total_documents();
-        let document_frequency = ctx.document_frequency(term).unwrap();
+        self.reader
+            .get_entry_with(term, |idf_entry| {
+                idf_entry.iter_with(|ref_entry| {
+                    let bm25 = BM25Inner::new(1.5, 0.75);
 
-        ctx.get_entry_with(term, |idf_entry| {
-            idf_entry.iter_with(|ref_entry| {
-                let bm25 = BM25Inner::new(1.5, 0.75);
+                    let idf = bm25.idf(total_documents, document_frequency);
 
-                let idf = bm25.idf(total_documents, document_frequency);
+                    let index = ref_entry.get_index();
+                    let count = self.reader.count(index);
+                    let frequency = *ref_entry.get_frequency();
 
-                let index = ref_entry.get_index();
-                let count = ctx.count(index);
-                let frequency = *ref_entry.get_frequency();
+                    // FIXME: Handle average word-count, currently hard-coded
+                    let score = bm25.calculate(frequency, count, 3, idf);
 
-                // FIXME: Handle average word-count, currently hard-coded
-                let score = bm25.calculate(frequency, count, 3, idf);
-
-                TfIdf::new(index, score)
+                    TfIdf::new(index, score)
+                })
             })
-        })
-        .map(Field::from)
+            .map(Field::from)
     }
 }
 
@@ -84,7 +81,7 @@ impl BM25Inner {
 }
 
 pub struct TfIdfRanker<'a> {
-    core: &'a CoreIndex,
+    reader: &'a ReaderContext<'a>,
 }
 
 impl TfIdfRanker<'_> {
@@ -99,35 +96,33 @@ impl TfIdfRanker<'_> {
 }
 
 impl<'a> Ranker<'a> for TfIdfRanker<'a> {
-    fn new(index: &'a CoreIndex) -> Self {
-        Self { core: index }
+    fn new(reader: &'a ReaderContext<'a>) -> Self {
+        Self { reader }
     }
 
     fn get(&self, term: &str) -> Option<Field> {
-        let reader = self.core.reader();
-        let ctx = ReaderContext::new(reader);
+        let total_documents = self.reader.total_documents();
 
-        let total_documents = ctx.total_documents();
+        self.reader
+            .get_entry_with(term, |idf_entry| {
+                debug_assert!(idf_entry.count() > 0);
+                let document_frequency = idf_entry.count();
 
-        ctx.get_entry_with(term, |idf_entry| {
-            debug_assert!(idf_entry.count() > 0);
-            let document_frequency = idf_entry.count();
+                idf_entry.iter_with(|ref_entry| {
+                    let index = ref_entry.get_index();
+                    let frequency = *ref_entry.get_frequency();
 
-            idf_entry.iter_with(|ref_entry| {
-                let index = ref_entry.get_index();
-                let frequency = *ref_entry.get_frequency();
+                    // Always greater than zero, empty documents are not indexed.
+                    let count = self.reader.count(index);
+                    debug_assert!(count > 0);
 
-                // Always greater than zero, empty documents are not indexed.
-                let count = ctx.count(index);
-                debug_assert!(count > 0);
+                    let tf = self.tf(frequency, count);
+                    let idf = self.idf(total_documents, document_frequency);
+                    let tfidf = tf * idf;
 
-                let tf = self.tf(frequency, count);
-                let idf = self.idf(total_documents, document_frequency);
-                let tfidf = tf * idf;
-
-                TfIdf::new(index, tfidf)
+                    TfIdf::new(index, tfidf)
+                })
             })
-        })
-        .map(Field::from)
+            .map(Field::from)
     }
 }
