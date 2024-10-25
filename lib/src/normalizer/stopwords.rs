@@ -25,7 +25,7 @@ impl Stopwords {
         Self(Arc::new(RwLock::new(set)))
     }
 
-    pub fn load<P: AsRef<Path>>(path: &P) -> Result<Self, Error> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let file = File::open(path).unwrap();
         let reader = BufReader::new(file);
 

@@ -101,7 +101,7 @@ mod tests {
         pipeline.insert(Box::new(Lowercase::new()));
         pipeline.insert(Box::new(Punctuation::new()));
         pipeline.insert(Box::new(
-            Stopwords::load(&"assets/stopwords/en.txt").unwrap(),
+            Stopwords::load("assets/stopwords/en.txt").unwrap(),
         ));
 
         let mut engine: IdxFacade<Index> = IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
@@ -112,7 +112,7 @@ mod tests {
         }
 
         // let target = "foxes"; // expected: 7
-        let target = "cat dog";
+        let target = "cat dog sat";
         // let term_doc_count = engine.document_frequency(&target);
         // let total_docs = engine.total_docs(); // expected: 20
 

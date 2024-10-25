@@ -1,84 +1,80 @@
-use crate::{
-    core::{Field, TfIdf},
-    reader::ReaderContext,
-};
+use crate::{core::TfIdf, reader::ReaderContext};
 
 pub trait Ranker<'a> {
     fn new(reader: &'a ReaderContext<'a>) -> Self;
-    fn get(&self, term: &str) -> Option<Field>;
+    fn get(&self, term: &str) -> Option<Vec<TfIdf>>;
 }
 
-pub struct Bm25<'a> {
-    reader: &'a ReaderContext<'a>,
-}
+// pub struct Bm25<'a> {
+//     reader: &'a ReaderContext<'a>,
+// }
 
-impl<'a> Ranker<'a> for Bm25<'a> {
-    #[inline]
-    fn new(reader: &'a ReaderContext<'a>) -> Self {
-        Self { reader }
-    }
+// impl<'a> Ranker<'a> for Bm25<'a> {
+//     #[inline]
+//     fn new(reader: &'a ReaderContext<'a>) -> Self {
+//         Self { reader }
+//     }
 
-    fn get(&self, term: &str) -> Option<Field> {
-        let total_documents = self.reader.total_documents();
-        let document_frequency = self.reader.document_frequency(term).unwrap();
+//     fn get(&self, term: &str) -> Option<Vec<TfIdf>> {
+//         let total_documents = self.reader.total_documents();
+//         let document_frequency = self.reader.document_frequency(term).unwrap();
 
-        self.reader
-            .get_entry_with(term, |idf_entry| {
-                idf_entry.iter_with(|ref_entry| {
-                    let bm25 = BM25Inner::new(1.5, 0.75);
+//         self.reader.get_entry_with(term, |idf_entry| {
+//             idf_entry.iter_with(|ref_entry| {
+//                 let bm25 = BM25Inner::new(1.5, 0.75);
 
-                    let idf = bm25.idf(total_documents, document_frequency);
+//                 let idf = bm25.idf(total_documents, document_frequency);
 
-                    let index = ref_entry.get_index();
-                    let count = self.reader.count(index);
-                    let frequency = *ref_entry.get_frequency();
+//                 let index = ref_entry.get_index();
+//                 let count = self.reader.count(index);
+//                 let frequency = *ref_entry.get_frequency();
 
-                    // FIXME: Handle average word-count, currently hard-coded
-                    let score = bm25.calculate(frequency, count, 3, idf);
+//                 // FIXME: Handle average word-count, currently hard-coded
+//                 let score = bm25.calculate(frequency, count, 3, idf);
 
-                    TfIdf::new(index, score)
-                })
-            })
-            .map(Field::from)
-    }
-}
+//                 TfIdf::new(index, score)
+//             })
+//         })
+//         // .map(Field::from)
+//     }
+// }
 
-/// Non-weighted BM25
-pub struct BM25Inner {
-    pub k1: f32,
-    pub b: f32,
-}
+// /// Non-weighted BM25
+// pub struct BM25Inner {
+//     pub k1: f32,
+//     pub b: f32,
+// }
 
-impl BM25Inner {
-    #[inline]
-    pub fn new(k1: f32, b: f32) -> Self {
-        Self { k1, b }
-    }
+// impl BM25Inner {
+//     #[inline]
+//     pub fn new(k1: f32, b: f32) -> Self {
+//         Self { k1, b }
+//     }
 
-    #[inline]
-    pub fn idf(&self, total_documents: usize, document_frequency: usize) -> f32 {
-        ((total_documents as f32 - document_frequency as f32 + 0.5)
-            / (document_frequency as f32 + 0.5)
-            + 1.0)
-            .log10()
-    }
+//     #[inline]
+//     pub fn idf(&self, total_documents: usize, document_frequency: usize) -> f32 {
+//         ((total_documents as f32 - document_frequency as f32 + 0.5)
+//             / (document_frequency as f32 + 0.5)
+//             + 1.0)
+//             .log10()
+//     }
 
-    #[inline]
-    pub fn calculate(
-        &self,
-        frequency: usize,
-        word_count: usize,
-        avg_word_count: usize,
-        idf: f32,
-    ) -> f32 {
-        let tf = frequency as f32;
-        let num = tf * (self.k1 + 1.0);
-        let denom =
-            tf + self.k1 * (1.0 - self.b + self.b * word_count as f32 / avg_word_count as f32);
+//     #[inline]
+//     pub fn calculate(
+//         &self,
+//         frequency: usize,
+//         word_count: usize,
+//         avg_word_count: usize,
+//         idf: f32,
+//     ) -> f32 {
+//         let tf = frequency as f32;
+//         let num = tf * (self.k1 + 1.0);
+//         let denom =
+//             tf + self.k1 * (1.0 - self.b + self.b * word_count as f32 / avg_word_count as f32);
 
-        idf * num / denom
-    }
-}
+//         idf * num / denom
+//     }
+// }
 
 pub struct TfIdfRanker<'a> {
     reader: &'a ReaderContext<'a>,
@@ -100,15 +96,16 @@ impl<'a> Ranker<'a> for TfIdfRanker<'a> {
         Self { reader }
     }
 
-    fn get(&self, term: &str) -> Option<Field> {
+    fn get(&self, term: &str) -> Option<Vec<TfIdf>> {
         let total_documents = self.reader.total_documents();
 
-        self.reader
-            .get_entry_with(term, |idf_entry| {
-                debug_assert!(idf_entry.count() > 0);
-                let document_frequency = idf_entry.count();
+        self.reader.get_entry_with(term, |idf_entry| {
+            debug_assert!(idf_entry.count() > 0);
+            let document_frequency = idf_entry.count();
 
-                idf_entry.iter_with(|ref_entry| {
+            idf_entry
+                .iter()
+                .map(|ref_entry| {
                     let index = ref_entry.get_index();
                     let frequency = *ref_entry.get_frequency();
 
@@ -122,7 +119,8 @@ impl<'a> Ranker<'a> for TfIdfRanker<'a> {
 
                     TfIdf::new(index, tfidf)
                 })
-            })
-            .map(Field::from)
+                .collect::<Vec<_>>()
+        })
+        // .map(Field::from)
     }
 }

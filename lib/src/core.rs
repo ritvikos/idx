@@ -201,10 +201,6 @@ impl IdfEntry {
         }
     }
 
-    pub fn iter_with<O>(&self, f: impl FnMut(&RefEntry) -> O) -> Vec<O> {
-        self.iter().map(f).collect::<Vec<O>>()
-    }
-
     // #[inline]
     // pub fn should_flush(&self) -> bool {
     //     self.range() > self.threshold
@@ -320,7 +316,7 @@ impl From<Vec<TfIdf>> for Field {
 
 #[derive(Debug)]
 pub struct Collection {
-    inner: Vec<Field>,
+    inner: Vec<Vec<TfIdf>>,
 }
 
 impl Collection {
@@ -331,7 +327,7 @@ impl Collection {
         }
     }
 
-    pub fn insert(&mut self, field: Field) {
+    pub fn insert(&mut self, field: Vec<TfIdf>) {
         self.inner.push(field)
     }
 }
