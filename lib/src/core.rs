@@ -316,19 +316,25 @@ impl From<Vec<TfIdf>> for Field {
 
 #[derive(Debug)]
 pub struct Collection {
-    inner: Vec<Vec<TfIdf>>,
+    // pub inner: Vec<Vec<TfIdf>>,
+    pub inner: HashMap<usize, f32>,
 }
 
 impl Collection {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner: Vec::with_capacity(capacity),
+            inner: HashMap::with_capacity(capacity),
         }
     }
 
-    pub fn insert(&mut self, field: Vec<TfIdf>) {
-        self.inner.push(field)
+    pub fn insert(&mut self, key: usize, value: f32) {
+        self.inner
+            .entry(key)
+            .and_modify(|v| {
+                *v = *v + value;
+            })
+            .or_insert(value);
     }
 }
 

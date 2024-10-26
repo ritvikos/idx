@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use crate::{descriptor::Descriptor, query::Query};
 
 use idx::{
-    core::Collection,
+    aggregate::{Aggregator, HashAggregator},
+    core::{Collection, TfIdf},
     index::{Index, Indexer},
     normalizer::NormalizerPipeline,
     token::Tokens,
@@ -62,12 +65,20 @@ impl<I: Indexer> IdxFacade<I> {
         }
 
         let capacity = tokens.count();
-        let mut collection = Collection::with_capacity(capacity);
+        let collection = Collection::with_capacity(capacity);
+
+        let hash_based = HashAggregator::new();
+        let mut aggregator = Aggregator::new(hash_based);
 
         tokens.for_each_mut(|token| {
-            self.index.get(token).map(|field| collection.insert(field));
+            if let Some(fields) = self.index.get(token) {
+                for field in fields {
+                    aggregator.insert(field.get_index(), field.get_score());
+                }
+            }
         });
 
+        // temporary
         collection
     }
 }
@@ -86,10 +97,15 @@ mod tests {
     };
 
     fn tiny_test_corpus() -> Vec<String> {
-        ["the cat sat on the mat", "the cat sat", "the dog barked"]
-            .iter()
-            .map(|document| document.to_string())
-            .collect::<Vec<_>>()
+        [
+            "the cat sat on the mat",
+            "the cat sat",
+            "the dog barked",
+            "penguin is a nice animal",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
     }
 
     #[test]
@@ -112,16 +128,17 @@ mod tests {
         }
 
         // let target = "foxes"; // expected: 7
-        let target = "cat dog sat";
+        let target = "cat sat";
         // let term_doc_count = engine.document_frequency(&target);
         // let total_docs = engine.total_docs(); // expected: 20
 
         let query = Query::new(target);
-        let tf = engine.get(query);
+        let collection = engine.get(query);
+        println!("collection: {collection:?}");
 
-        println!("engine: {engine:#?}");
+        // println!("engine: {engine:#?}");
         // println!("term_doc_count: {term_doc_count:?}");
         // println!("total_docs: {total_docs}");
-        println!("tf: {tf:#?}");
+        // println!("tf: {tf:#?}");
     }
 }

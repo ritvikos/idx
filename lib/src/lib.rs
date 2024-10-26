@@ -1,3 +1,4 @@
+pub mod aggregate;
 pub mod core;
 pub mod document;
 pub mod error;
