@@ -31,7 +31,10 @@ pub struct Index {
 pub trait Indexer {
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get(&self, term: &str) -> Option<Vec<TfIdf>>;
+    fn get_score(&self, term: &str) -> Option<Vec<TfIdf>>;
+
+    // TODO: return resource instead.
+    fn get_resource(&self, index: usize) -> Option<String>;
 }
 
 impl Indexer for Index {
@@ -71,29 +74,21 @@ impl Indexer for Index {
         term_entry.reset_counter()
     }
 
-    fn get(&self, term: &str) -> Option<Vec<TfIdf>> {
+    fn get_score(&self, term: &str) -> Option<Vec<TfIdf>> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
         let ranker = TfIdfRanker::new(&ctx);
         ranker.get(term)
     }
+
+    fn get_resource(&self, index: usize) -> Option<String> {
+        let reader = self.core.reader();
+        let ctx = ReaderContext::new(reader);
+
+        ctx.get_resource(index)
+    }
 }
-
-// impl Index {
-// pub fn iter_entries<F>(&self, term: &str, f: F) -> Option<Field>
-// where
-//     F: Fn(&IdfEntry, &RefEntry) -> TfIdf,
-// {
-//     let reader = self.core.reader();
-//     let ctx = ReaderContext::new(reader);
-
-//     ctx.get_entry_with(term, |idf_entry| {
-//         idf_entry.iter_with(|ref_entry| f(idf_entry, ref_entry))
-//     })
-//     .map(Field::from)
-// }
-// }
 
 #[derive(Debug)]
 pub struct CoreIndex {

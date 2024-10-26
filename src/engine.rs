@@ -71,11 +71,16 @@ impl<I: Indexer> IdxFacade<I> {
         let mut aggregator = Aggregator::new(hash_based);
 
         tokens.for_each_mut(|token| {
-            if let Some(fields) = self.index.get(token) {
+            if let Some(fields) = self.index.get_score(token) {
                 for field in fields {
                     aggregator.insert(field.get_index(), field.get_score());
                 }
             }
+        });
+
+        aggregator.iter().for_each(|(index, score)| {
+            let resource = self.index.get_resource(*index).unwrap();
+            println!("{index} {score}: {resource}");
         });
 
         // temporary
@@ -122,8 +127,8 @@ mod tests {
 
         let mut engine: IdxFacade<Index> = IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
 
-        for (idx, document) in corpus.iter().enumerate() {
-            let descriptor = Descriptor::new(format!("path_{}", idx), document.into());
+        for document in corpus {
+            let descriptor = Descriptor::new(document.clone(), document.into());
             engine.insert(descriptor);
         }
 

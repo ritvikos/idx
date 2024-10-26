@@ -71,6 +71,11 @@ impl<'rctx> ReaderContext<'rctx> {
         self.reader.document_frequency(term)
     }
 
+    #[inline]
+    pub fn get_resource(&self, index: usize) -> Option<String> {
+        self.store().get_path(index)
+    }
+
     // Always greater than zero,
     // since empty documents are not indexed.
     #[inline]

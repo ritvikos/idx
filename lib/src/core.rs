@@ -64,8 +64,15 @@ impl FileIndex {
     pub fn get(&self, index: usize) -> Option<&FileEntry> {
         self.inner.get(index)
     }
+
+    // temporary
+    #[inline]
+    pub fn get_path(&self, index: usize) -> Option<String> {
+        self.inner.get(index).map(|entry| entry.path())
+    }
 }
 
+// TODO: Store the `Resource` instead of `path`
 #[derive(Debug, PartialEq, Eq)]
 pub struct FileEntry {
     path: String,
@@ -83,6 +90,10 @@ impl FileEntry {
             // - The value must not be zero, so empty documents are not indexed.
             count: unsafe { NonZeroUsize::new_unchecked(word_count) },
         }
+    }
+
+    pub fn path(&self) -> String {
+        self.path.clone()
     }
 
     pub fn count(&self) -> usize {
