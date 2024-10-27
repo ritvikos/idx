@@ -1,7 +1,9 @@
+use std::{fmt::Debug, marker::PhantomData};
+
 use crate::{core::TfIdf, reader::ReaderContext};
 
-pub trait Ranker<'a> {
-    fn new(reader: &'a ReaderContext<'a>) -> Self;
+pub trait Ranker<'a, R: Clone + Debug> {
+    fn new(reader: &'a ReaderContext<'a, R>) -> Self;
     fn get(&self, term: &str) -> Option<Vec<TfIdf>>;
 }
 
@@ -76,11 +78,12 @@ pub trait Ranker<'a> {
 //     }
 // }
 
-pub struct TfIdfRanker<'a> {
-    reader: &'a ReaderContext<'a>,
+pub struct TfIdfRanker<'a, R: Clone + Debug> {
+    reader: &'a ReaderContext<'a, R>,
+    _marker: PhantomData<R>,
 }
 
-impl TfIdfRanker<'_> {
+impl<R: Clone + Debug> TfIdfRanker<'_, R> {
     // FIXME: Need more robust conversion mechanism.
     pub fn tf(&self, frequency: usize, word_count: usize) -> f32 {
         frequency as f32 / word_count as f32
@@ -91,9 +94,12 @@ impl TfIdfRanker<'_> {
     }
 }
 
-impl<'a> Ranker<'a> for TfIdfRanker<'a> {
-    fn new(reader: &'a ReaderContext<'a>) -> Self {
-        Self { reader }
+impl<'a, R: Clone + Debug> Ranker<'a, R> for TfIdfRanker<'a, R> {
+    fn new(reader: &'a ReaderContext<'a, R>) -> Self {
+        Self {
+            reader,
+            _marker: PhantomData,
+        }
     }
 
     fn get(&self, term: &str) -> Option<Vec<TfIdf>> {

@@ -42,7 +42,7 @@ impl Engine {
         Self {}
     }
 
-    pub fn read(&self, path: String, buffer: &mut Vec<u8>) -> Descriptor {
+    pub fn read(&self, path: String, buffer: &mut Vec<u8>) -> Descriptor<String> {
         let document = self.document(buffer);
         Descriptor::new(path, document)
     }
@@ -162,7 +162,7 @@ async fn main() {
     (0..thread_config.index.get()).for_each(|_| {
         let rx = index_rx.clone();
 
-        let mut facade: IdxFacade<Index> = IdxFacade::new(
+        let mut facade: IdxFacade<Index<String>> = IdxFacade::new(
             INDEX_CAPACITY,
             THRESHOLD_CAPACITY,
             tokenizer.clone(),

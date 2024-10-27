@@ -1,13 +1,15 @@
+use std::fmt::Debug;
+
 use crate::core::{FileEntry, FileIndex, IdfEntry, InvertedIndex, TermCounter};
 
-pub struct IndexReader<'r> {
-    store: &'r FileIndex,
+pub struct IndexReader<'r, R: Clone + Debug> {
+    store: &'r FileIndex<R>,
     index: &'r InvertedIndex,
     count: &'r TermCounter,
 }
 
-impl<'r> IndexReader<'r> {
-    pub fn new(store: &'r FileIndex, index: &'r InvertedIndex, count: &'r TermCounter) -> Self {
+impl<'r, R: Clone + Debug> IndexReader<'r, R> {
+    pub fn new(store: &'r FileIndex<R>, index: &'r InvertedIndex, count: &'r TermCounter) -> Self {
         Self {
             store,
             index,
@@ -16,7 +18,7 @@ impl<'r> IndexReader<'r> {
     }
 }
 
-impl<'r> IndexReader<'r> {
+impl<'r, R: Clone + Debug> IndexReader<'r, R> {
     /// Number of indexed documents
     #[inline]
     pub fn total_documents(&self) -> usize {
@@ -40,7 +42,7 @@ impl<'r> IndexReader<'r> {
     }
 
     #[inline]
-    pub fn get_index(&self, index: usize) -> Option<&FileEntry> {
+    pub fn get_index(&self, index: usize) -> Option<&FileEntry<R>> {
         self.store.get(index)
     }
 
@@ -52,12 +54,12 @@ impl<'r> IndexReader<'r> {
     }
 }
 
-pub struct ReaderContext<'rctx> {
-    reader: IndexReader<'rctx>,
+pub struct ReaderContext<'rctx, R: Clone + Debug> {
+    reader: IndexReader<'rctx, R>,
 }
 
-impl<'rctx> ReaderContext<'rctx> {
-    pub fn new(reader: IndexReader<'rctx>) -> Self {
+impl<'rctx, R: Clone + Debug> ReaderContext<'rctx, R> {
+    pub fn new(reader: IndexReader<'rctx, R>) -> Self {
         Self { reader }
     }
 
@@ -72,7 +74,7 @@ impl<'rctx> ReaderContext<'rctx> {
     }
 
     #[inline]
-    pub fn get_resource(&self, index: usize) -> Option<String> {
+    pub fn get_resource(&self, index: usize) -> Option<R> {
         self.store().get_path(index)
     }
 
@@ -89,7 +91,7 @@ impl<'rctx> ReaderContext<'rctx> {
     }
 
     #[inline]
-    fn store(&self) -> &FileIndex {
+    fn store(&self) -> &FileIndex<R> {
         self.reader.store
     }
 

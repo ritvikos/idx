@@ -1,24 +1,17 @@
-use std::collections::HashMap;
+use std::fmt::Debug;
 
 use crate::{descriptor::Descriptor, query::Query};
 
 use idx::{
     aggregate::{Aggregator, HashAggregator},
-    core::{Collection, TfIdf},
-    index::{Index, Indexer},
+    core::Collection,
+    index::Indexer,
     normalizer::NormalizerPipeline,
-    token::Tokens,
     tokenizer::Tokenizer,
 };
 
-pub trait Engine {
-    fn index(&mut self, descriptor: Descriptor);
-    fn search(&self, query: Query);
-}
-
-// TODO: Partition
 #[derive(Debug)]
-pub struct IdxFacade<I: Indexer = Index> {
+pub struct IdxFacade<I: Indexer> {
     pub index: I,
     pub tokenizer: Tokenizer,
     pub pipeline: NormalizerPipeline,
@@ -38,20 +31,16 @@ impl<I: Indexer> IdxFacade<I> {
         }
     }
 
-    pub fn insert(&mut self, descriptor: Descriptor) {
+    pub fn insert(&mut self, descriptor: Descriptor<<I as Indexer>::R>) {
         let mut tokens = descriptor.tokenize(&mut self.tokenizer);
-        let path = descriptor.path();
+        let resource = descriptor.resource();
         let word_count = tokens.count();
 
         if !self.pipeline.is_empty() {
             self.pipeline.run(&mut tokens);
         }
 
-        self.insert_inner(path, word_count, &mut tokens);
-    }
-
-    fn insert_inner<S: Into<String>>(&mut self, path: S, word_count: usize, tokens: &mut Tokens) {
-        self.index.insert(path.into(), word_count, tokens);
+        self.index.insert(resource, word_count, &mut tokens);
     }
 
     pub fn get(&self, query: Query) -> Collection {
@@ -80,7 +69,7 @@ impl<I: Indexer> IdxFacade<I> {
 
         aggregator.iter().for_each(|(index, score)| {
             let resource = self.index.get_resource(*index).unwrap();
-            println!("{index} {score}: {resource}");
+            println!("{index} {score}: {resource:?}");
         });
 
         // temporary
@@ -125,7 +114,8 @@ mod tests {
             Stopwords::load("assets/stopwords/en.txt").unwrap(),
         ));
 
-        let mut engine: IdxFacade<Index> = IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
+        let mut engine: IdxFacade<Index<String>> =
+            IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
 
         for document in corpus {
             let descriptor = Descriptor::new(document.clone(), document.into());

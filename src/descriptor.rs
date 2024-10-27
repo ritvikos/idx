@@ -1,15 +1,17 @@
+use std::fmt::Debug;
+
 use idx::{document::Document, token::Tokens, tokenizer::Tokenizer};
 
 #[derive(Debug)]
-pub struct Descriptor {
+pub struct Descriptor<R: Clone + Debug> {
     document: Document,
-    path: String,
+    resource: R,
 }
 
-impl Descriptor {
+impl<R: Clone + Debug> Descriptor<R> {
     #[inline]
-    pub fn new(path: String, document: Document) -> Self {
-        Self { path, document }
+    pub fn new(resource: R, document: Document) -> Self {
+        Self { resource, document }
     }
 
     #[inline]
@@ -18,13 +20,8 @@ impl Descriptor {
     }
 
     #[inline]
-    pub fn path(&self) -> String {
-        self.path.clone()
-    }
-
-    #[inline]
-    pub fn path_ref(&self) -> &str {
-        &self.path
+    pub fn resource(&self) -> R {
+        self.resource.clone()
     }
 
     #[inline]

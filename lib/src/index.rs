@@ -5,6 +5,8 @@
 //! The [`InvertedIndex`] handles the core inverted index data structure and
 //! exposes methods to perform operations.
 
+use std::fmt::Debug;
+
 use crate::{
     core::{FileIndex, InvertedIndex, TermCounter, TfIdf},
     rank::{Ranker, TfIdfRanker},
@@ -12,6 +14,17 @@ use crate::{
     token::Tokens,
     writer::{FileEntryState, IndexWriter, WriterContext},
 };
+
+pub trait Indexer {
+    type R: Clone + Debug;
+
+    fn new(capacity: usize, threshold: usize) -> Self;
+    fn insert(&mut self, resource: Self::R, word_count: usize, tokens: &mut Tokens);
+    fn get_score(&self, term: &str) -> Option<Vec<TfIdf>>;
+
+    // TODO: return resource instead.
+    fn get_resource(&self, index: usize) -> Option<Self::R>;
+}
 
 /// # Indexer
 ///
@@ -22,22 +35,15 @@ use crate::{
 /// The current strategy utilizes a single-threaded, thread-local indexer
 /// and perform a merge operation to generate a global index view.
 #[derive(Debug)]
-pub struct Index {
-    pub core: CoreIndex,
+pub struct Index<R: Clone + Debug> {
+    pub core: CoreIndex<R>,
     pub capacity: usize,
     pub threshold: usize,
 }
 
-pub trait Indexer {
-    fn new(capacity: usize, threshold: usize) -> Self;
-    fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens);
-    fn get_score(&self, term: &str) -> Option<Vec<TfIdf>>;
+impl<R: Clone + Debug> Indexer for Index<R> {
+    type R = R;
 
-    // TODO: return resource instead.
-    fn get_resource(&self, index: usize) -> Option<String>;
-}
-
-impl Indexer for Index {
     /// Creates a new instance of `Index`
     fn new(capacity: usize, threshold: usize) -> Self {
         // TODO: Ensure threshold is less than capacity.
@@ -62,10 +68,10 @@ impl Indexer for Index {
     // Approach 2:
     // On startup, validate for such scenarios and handle,
     // before re-constructing the in-memory structure.
-    fn insert(&mut self, path: String, word_count: usize, tokens: &mut Tokens) {
+    fn insert(&mut self, resource: R, word_count: usize, tokens: &mut Tokens) {
         let writer = self.core.writer();
-        let file_entry = WriterContext::<FileEntryState>::new(writer);
-        let mut term_entry = file_entry.entry(path, word_count);
+        let file_entry = WriterContext::<FileEntryState, R>::new(writer);
+        let mut term_entry = file_entry.entry(resource, word_count);
 
         tokens.for_each_mut(|token| {
             term_entry.insert_term_with(|| std::mem::take(token));
@@ -82,7 +88,7 @@ impl Indexer for Index {
         ranker.get(term)
     }
 
-    fn get_resource(&self, index: usize) -> Option<String> {
+    fn get_resource(&self, index: usize) -> Option<R> {
         let reader = self.core.reader();
         let ctx = ReaderContext::new(reader);
 
@@ -91,13 +97,13 @@ impl Indexer for Index {
 }
 
 #[derive(Debug)]
-pub struct CoreIndex {
-    store: FileIndex,
+pub struct CoreIndex<R: Clone + Debug> {
+    store: FileIndex<R>,
     index: InvertedIndex,
     count: TermCounter,
 }
 
-impl CoreIndex {
+impl<R: Clone + Debug> CoreIndex<R> {
     /// Creates a new instance of [`CoreIndex`]
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
@@ -116,7 +122,7 @@ impl CoreIndex {
     /// # See Also
     ///
     /// - [`IndexWriter`]: Provides WRITE access to the index.
-    pub fn reader(&self) -> IndexReader {
+    pub fn reader(&self) -> IndexReader<R> {
         IndexReader::new(&self.store, &self.index, &self.count)
     }
 
@@ -128,7 +134,7 @@ impl CoreIndex {
     /// # See Also
     ///
     /// - [`IndexReader`]: Provides READ access to the index.
-    pub fn writer(&mut self) -> IndexWriter {
+    pub fn writer(&mut self) -> IndexWriter<R> {
         IndexWriter::new(&mut self.store, &mut self.index, &mut self.count)
     }
 }

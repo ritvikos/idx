@@ -1,6 +1,6 @@
 extern crate hashbrown;
 
-use std::{cell::RefCell, hash::Hash, num::NonZeroUsize};
+use std::{cell::RefCell, fmt::Debug, hash::Hash, num::NonZeroUsize};
 
 use hashbrown::{
     hash_map::HashMap,
@@ -37,11 +37,11 @@ impl TfIdf {
 
 // TODO: Ensure that same files are not added more than once, maybe use another data structure.
 #[derive(Debug)]
-pub struct FileIndex {
-    inner: Vec<FileEntry>,
+pub struct FileIndex<R: Clone + Debug> {
+    inner: Vec<FileEntry<R>>,
 }
 
-impl FileIndex {
+impl<R: Clone + Debug> FileIndex<R> {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -55,36 +55,35 @@ impl FileIndex {
     }
 
     #[inline]
-    pub fn insert(&mut self, value: FileEntry) -> usize {
+    pub fn insert(&mut self, value: FileEntry<R>) -> usize {
         self.inner.push(value);
         self.len() - 1
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> Option<&FileEntry> {
+    pub fn get(&self, index: usize) -> Option<&FileEntry<R>> {
         self.inner.get(index)
     }
 
     // temporary
     #[inline]
-    pub fn get_path(&self, index: usize) -> Option<String> {
-        self.inner.get(index).map(|entry| entry.path())
+    pub fn get_path(&self, index: usize) -> Option<R> {
+        self.inner.get(index).map(|entry| entry.resource())
     }
 }
 
-// TODO: Store the `Resource` instead of `path`
 #[derive(Debug, PartialEq, Eq)]
-pub struct FileEntry {
-    path: String,
+pub struct FileEntry<R: Clone + Debug> {
+    resource: R,
 
     // Word count
     count: NonZeroUsize,
 }
 
-impl FileEntry {
-    pub fn new<S: Into<String>>(path: S, word_count: usize) -> Self {
+impl<R: Clone + Debug> FileEntry<R> {
+    pub fn new(resource: R, word_count: usize) -> Self {
         Self {
-            path: path.into(),
+            resource,
 
             // SAFETY:
             // - The value must not be zero, so empty documents are not indexed.
@@ -92,8 +91,8 @@ impl FileEntry {
         }
     }
 
-    pub fn path(&self) -> String {
-        self.path.clone()
+    pub fn resource(&self) -> R {
+        self.resource.clone()
     }
 
     pub fn count(&self) -> usize {

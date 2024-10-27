@@ -1,19 +1,19 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     core::{FileEntry, FileIndex, InvertedIndex, TermCounter, TfEntry},
     token::Token,
 };
 
-pub struct IndexWriter<'w> {
-    store: &'w mut FileIndex,
+pub struct IndexWriter<'w, R: Clone + Debug> {
+    store: &'w mut FileIndex<R>,
     index: &'w mut InvertedIndex,
     count: &'w mut TermCounter,
 }
 
-impl<'w> IndexWriter<'w> {
+impl<'w, R: Clone + Debug> IndexWriter<'w, R> {
     pub fn new(
-        store: &'w mut FileIndex,
+        store: &'w mut FileIndex<R>,
         index: &'w mut InvertedIndex,
         count: &'w mut TermCounter,
     ) -> Self {
@@ -25,7 +25,7 @@ impl<'w> IndexWriter<'w> {
     }
 }
 
-impl<'w> IndexWriter<'w> {
+impl<'w, R: Clone + Debug> IndexWriter<'w, R> {
     // Insert a term into the term counter
     #[inline]
     pub fn insert_counter(&mut self, term: String) {
@@ -33,7 +33,7 @@ impl<'w> IndexWriter<'w> {
     }
 
     // Insert a file entry
-    pub fn insert_file_entry(&mut self, entry: FileEntry) -> usize {
+    pub fn insert_file_entry(&mut self, entry: FileEntry<R>) -> usize {
         self.store.insert(entry)
     }
 
@@ -61,14 +61,14 @@ pub struct TermEntryState {
     index: usize,
 }
 
-pub struct WriterContext<'wctx, S> {
-    writer: IndexWriter<'wctx>,
+pub struct WriterContext<'wctx, S, R: Clone + Debug> {
+    writer: IndexWriter<'wctx, R>,
     data: Option<S>,
     _marker: PhantomData<S>,
 }
 
-impl<'wctx, S> WriterContext<'wctx, S> {
-    pub fn new(writer: IndexWriter<'wctx>) -> Self {
+impl<'wctx, S, R: Clone + Debug> WriterContext<'wctx, S, R> {
+    pub fn new(writer: IndexWriter<'wctx, R>) -> Self {
         Self {
             writer,
             data: None,
@@ -76,7 +76,7 @@ impl<'wctx, S> WriterContext<'wctx, S> {
         }
     }
 
-    pub fn new_with_data(writer: IndexWriter<'wctx>, data: S) -> Self {
+    pub fn new_with_data(writer: IndexWriter<'wctx, R>, data: S) -> Self {
         Self {
             writer,
             data: Some(data),
@@ -85,19 +85,22 @@ impl<'wctx, S> WriterContext<'wctx, S> {
     }
 }
 
-impl<'wctx> WriterContext<'wctx, FileEntryState> {
+impl<'wctx, R: Clone + Debug> WriterContext<'wctx, FileEntryState, R> {
     pub fn entry(
         mut self,
-        path: String,
+        resource: R,
         word_count: usize,
-    ) -> WriterContext<'wctx, TermEntryState> {
-        let entry = FileEntry::new(path, word_count);
+    ) -> WriterContext<'wctx, TermEntryState, R> {
+        let entry = FileEntry::new(resource, word_count);
         let index = self.writer.insert_file_entry(entry);
-        WriterContext::<'wctx, TermEntryState>::new_with_data(self.writer, TermEntryState { index })
+        WriterContext::<'wctx, TermEntryState, R>::new_with_data(
+            self.writer,
+            TermEntryState { index },
+        )
     }
 }
 
-impl<'wctx> WriterContext<'wctx, TermEntryState> {
+impl<'wctx, R: Clone + Debug> WriterContext<'wctx, TermEntryState, R> {
     pub fn insert_term(&mut self, term: String) {
         self.writer.insert_counter(term.clone());
 
