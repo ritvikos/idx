@@ -1,19 +1,19 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    core::{FileEntry, FileIndex, InvertedIndex, TermCounter, TfEntry},
+    core::{InvertedIndex, Resource, Store, TermCounter, TfEntry},
     token::Token,
 };
 
 pub struct IndexWriter<'w, R: Clone + Debug> {
-    store: &'w mut FileIndex<R>,
+    store: &'w mut Store<R>,
     index: &'w mut InvertedIndex,
     count: &'w mut TermCounter,
 }
 
 impl<'w, R: Clone + Debug> IndexWriter<'w, R> {
     pub fn new(
-        store: &'w mut FileIndex<R>,
+        store: &'w mut Store<R>,
         index: &'w mut InvertedIndex,
         count: &'w mut TermCounter,
     ) -> Self {
@@ -33,7 +33,7 @@ impl<'w, R: Clone + Debug> IndexWriter<'w, R> {
     }
 
     // Insert a file entry
-    pub fn insert_file_entry(&mut self, entry: FileEntry<R>) -> usize {
+    pub fn insert_resource(&mut self, entry: Resource<R>) -> usize {
         self.store.insert(entry)
     }
 
@@ -54,7 +54,7 @@ impl<'w, R: Clone + Debug> IndexWriter<'w, R> {
     }
 }
 
-pub struct FileEntryState;
+pub struct ResourceState;
 
 #[derive(Clone, Copy)]
 pub struct TermEntryState {
@@ -85,14 +85,14 @@ impl<'wctx, S, R: Clone + Debug> WriterContext<'wctx, S, R> {
     }
 }
 
-impl<'wctx, R: Clone + Debug> WriterContext<'wctx, FileEntryState, R> {
+impl<'wctx, R: Clone + Debug> WriterContext<'wctx, ResourceState, R> {
     pub fn entry(
         mut self,
         resource: R,
         word_count: usize,
     ) -> WriterContext<'wctx, TermEntryState, R> {
-        let entry = FileEntry::new(resource, word_count);
-        let index = self.writer.insert_file_entry(entry);
+        let entry = Resource::new(resource, word_count);
+        let index = self.writer.insert_resource(entry);
         WriterContext::<'wctx, TermEntryState, R>::new_with_data(
             self.writer,
             TermEntryState { index },

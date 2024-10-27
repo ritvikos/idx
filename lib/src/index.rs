@@ -8,11 +8,11 @@
 use std::fmt::Debug;
 
 use crate::{
-    core::{FileIndex, InvertedIndex, TermCounter, TfIdf},
+    core::{InvertedIndex, Store, TermCounter, TfIdf},
     rank::{Ranker, TfIdfRanker},
     reader::{IndexReader, ReaderContext},
     token::Tokens,
-    writer::{FileEntryState, IndexWriter, WriterContext},
+    writer::{IndexWriter, ResourceState, WriterContext},
 };
 
 pub trait Indexer {
@@ -21,8 +21,6 @@ pub trait Indexer {
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, resource: Self::R, word_count: usize, tokens: &mut Tokens);
     fn get_score(&self, term: &str) -> Option<Vec<TfIdf>>;
-
-    // TODO: return resource instead.
     fn get_resource(&self, index: usize) -> Option<Self::R>;
 }
 
@@ -70,8 +68,8 @@ impl<R: Clone + Debug> Indexer for Index<R> {
     // before re-constructing the in-memory structure.
     fn insert(&mut self, resource: R, word_count: usize, tokens: &mut Tokens) {
         let writer = self.core.writer();
-        let file_entry = WriterContext::<FileEntryState, R>::new(writer);
-        let mut term_entry = file_entry.entry(resource, word_count);
+        let resource_entry = WriterContext::<ResourceState, R>::new(writer);
+        let mut term_entry = resource_entry.entry(resource, word_count);
 
         tokens.for_each_mut(|token| {
             term_entry.insert_term_with(|| std::mem::take(token));
@@ -98,7 +96,7 @@ impl<R: Clone + Debug> Indexer for Index<R> {
 
 #[derive(Debug)]
 pub struct CoreIndex<R: Clone + Debug> {
-    store: FileIndex<R>,
+    store: Store<R>,
     index: InvertedIndex,
     count: TermCounter,
 }
@@ -108,7 +106,7 @@ impl<R: Clone + Debug> CoreIndex<R> {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            store: FileIndex::with_capacity(capacity),
+            store: Store::with_capacity(capacity),
             index: InvertedIndex::with_capacity(capacity),
             count: TermCounter::new(),
         }

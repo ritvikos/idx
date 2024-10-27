@@ -37,11 +37,11 @@ impl TfIdf {
 
 // TODO: Ensure that same files are not added more than once, maybe use another data structure.
 #[derive(Debug)]
-pub struct FileIndex<R: Clone + Debug> {
-    inner: Vec<FileEntry<R>>,
+pub struct Store<R: Clone + Debug> {
+    inner: Vec<Resource<R>>,
 }
 
-impl<R: Clone + Debug> FileIndex<R> {
+impl<R: Clone + Debug> Store<R> {
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -55,13 +55,13 @@ impl<R: Clone + Debug> FileIndex<R> {
     }
 
     #[inline]
-    pub fn insert(&mut self, value: FileEntry<R>) -> usize {
+    pub fn insert(&mut self, value: Resource<R>) -> usize {
         self.inner.push(value);
         self.len() - 1
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> Option<&FileEntry<R>> {
+    pub fn get(&self, index: usize) -> Option<&Resource<R>> {
         self.inner.get(index)
     }
 
@@ -73,17 +73,17 @@ impl<R: Clone + Debug> FileIndex<R> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct FileEntry<R: Clone + Debug> {
-    resource: R,
+pub struct Resource<R: Clone + Debug> {
+    inner: R,
 
     // Word count
     count: NonZeroUsize,
 }
 
-impl<R: Clone + Debug> FileEntry<R> {
+impl<R: Clone + Debug> Resource<R> {
     pub fn new(resource: R, word_count: usize) -> Self {
         Self {
-            resource,
+            inner: resource,
 
             // SAFETY:
             // - The value must not be zero, so empty documents are not indexed.
@@ -92,7 +92,7 @@ impl<R: Clone + Debug> FileEntry<R> {
     }
 
     pub fn resource(&self) -> R {
-        self.resource.clone()
+        self.inner.clone()
     }
 
     pub fn count(&self) -> usize {
@@ -314,19 +314,7 @@ impl PartialEq for TfEntry {
 }
 
 #[derive(Debug)]
-pub struct Field {
-    inner: Vec<TfIdf>,
-}
-
-impl From<Vec<TfIdf>> for Field {
-    fn from(value: Vec<TfIdf>) -> Self {
-        Self { inner: value }
-    }
-}
-
-#[derive(Debug)]
 pub struct Collection {
-    // pub inner: Vec<Vec<TfIdf>>,
     pub inner: HashMap<usize, f32>,
 }
 

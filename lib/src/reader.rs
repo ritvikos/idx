@@ -1,15 +1,15 @@
 use std::fmt::Debug;
 
-use crate::core::{FileEntry, FileIndex, IdfEntry, InvertedIndex, TermCounter};
+use crate::core::{IdfEntry, InvertedIndex, Resource, Store, TermCounter};
 
 pub struct IndexReader<'r, R: Clone + Debug> {
-    store: &'r FileIndex<R>,
+    store: &'r Store<R>,
     index: &'r InvertedIndex,
     count: &'r TermCounter,
 }
 
 impl<'r, R: Clone + Debug> IndexReader<'r, R> {
-    pub fn new(store: &'r FileIndex<R>, index: &'r InvertedIndex, count: &'r TermCounter) -> Self {
+    pub fn new(store: &'r Store<R>, index: &'r InvertedIndex, count: &'r TermCounter) -> Self {
         Self {
             store,
             index,
@@ -42,7 +42,7 @@ impl<'r, R: Clone + Debug> IndexReader<'r, R> {
     }
 
     #[inline]
-    pub fn get_index(&self, index: usize) -> Option<&FileEntry<R>> {
+    pub fn get_index(&self, index: usize) -> Option<&Resource<R>> {
         self.store.get(index)
     }
 
@@ -91,7 +91,7 @@ impl<'rctx, R: Clone + Debug> ReaderContext<'rctx, R> {
     }
 
     #[inline]
-    fn store(&self) -> &FileIndex<R> {
+    fn store(&self) -> &Store<R> {
         self.reader.store
     }
 
