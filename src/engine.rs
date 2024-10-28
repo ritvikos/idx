@@ -7,6 +7,8 @@ use idx::{
     core::Collection,
     index::Indexer,
     normalizer::NormalizerPipeline,
+    reader::ReaderContext,
+    score::{Score, Scorer, TfIdfScorer},
     tokenizer::Tokenizer,
 };
 
@@ -44,6 +46,8 @@ impl<I: Indexer> IdxFacade<I> {
     }
 
     pub fn get(&self, query: Query) -> Collection {
+        let reader = self.index.reader();
+
         let mut tokenizer = self.tokenizer.clone();
         let mut pipeline = self.pipeline.clone();
 
@@ -59,13 +63,17 @@ impl<I: Indexer> IdxFacade<I> {
         let hash_based = HashAggregator::new();
         let mut aggregator = Aggregator::new(hash_based);
 
-        tokens.for_each_mut(|token| {
-            if let Some(fields) = self.index.get_score(token) {
-                for field in fields {
-                    aggregator.insert(field.get_index(), field.get_score());
-                }
-            }
-        });
+        let tfidf_scorer = TfIdfScorer::new(&reader);
+        let mut scorer = Scorer::new(tfidf_scorer);
+
+        scorer.score_and_apply(
+            |score| {
+                score.iter().for_each(|score| {
+                    aggregator.insert(score.0, score.1);
+                });
+            },
+            tokens,
+        );
 
         aggregator.iter().for_each(|(index, score)| {
             let resource = self.index.get_resource(*index).unwrap();
@@ -122,18 +130,76 @@ mod tests {
             engine.insert(descriptor);
         }
 
-        // let target = "foxes"; // expected: 7
         let target = "cat sat";
-        // let term_doc_count = engine.document_frequency(&target);
-        // let total_docs = engine.total_docs(); // expected: 20
 
         let query = Query::new(target);
         let collection = engine.get(query);
         println!("collection: {collection:?}");
+    }
 
-        // println!("engine: {engine:#?}");
-        // println!("term_doc_count: {term_doc_count:?}");
-        // println!("total_docs: {total_docs}");
-        // println!("tf: {tf:#?}");
+    #[derive(Clone, Debug)]
+    struct Webpage {
+        url: String,
+        title: String,
+        excerpt: String,
+    }
+
+    fn tiny_test_webpage_corpus() -> Vec<Webpage> {
+        vec![
+        Webpage {
+            url: String::from("https://example.com/rust-guide"),
+            title: String::from("Rust Programming Guide"),
+            excerpt: String::from("A comprehensive guide to Rust programming, covering the basics to advanced topics."),
+        },
+        Webpage {
+            url: String::from("https://example.com/webdev-trends"),
+            title: String::from("Top Web Development Trends in 2024"),
+            excerpt: String::from("Explore the latest trends in web development, from frameworks to tools."),
+        },
+        Webpage {
+            url: String::from("https://example.com/ai-future"),
+            title: String::from("The Future of AI"),
+            excerpt: String::from("A look into how AI is shaping the future across various industries."),
+        },
+        Webpage {
+            url: String::from("https://example.com/cybersecurity-basics"),
+            title: String::from("Cybersecurity Essentials"),
+            excerpt: String::from("Learn the fundamentals of cybersecurity and how to protect digital assets."),
+        },
+    ]
+    }
+
+    #[test]
+    fn test_indexer_and_engine_with_structure() {
+        let corpus = tiny_test_webpage_corpus();
+        let tokenizer = Tokenizer::Standard(Standard::new());
+
+        let mut pipeline = NormalizerPipeline::new();
+        pipeline.insert(Box::new(Lowercase::new()));
+        pipeline.insert(Box::new(Punctuation::new()));
+        pipeline.insert(Box::new(
+            Stopwords::load("assets/stopwords/en.txt").unwrap(),
+        ));
+
+        let mut engine: IdxFacade<Index<Webpage>> =
+            IdxFacade::new(10, 30, tokenizer.clone(), pipeline);
+
+        for document in corpus {
+            let doc = document.excerpt.clone();
+            let descriptor = Descriptor::new(document.clone(), doc.into());
+            engine.insert(descriptor);
+        }
+
+        let target = "AI";
+
+        let query = Query::new(target);
+        let collection = engine.get(query);
+        println!("collection: {collection:?}");
     }
 }
+
+// TODO: Demo
+// Stocks
+// webpages
+// research papers
+// ecommerce

@@ -7,6 +7,7 @@ pub mod index;
 pub mod normalizer;
 pub mod rank;
 pub mod reader;
+pub mod score;
 pub mod token;
 pub mod tokenizer;
 pub mod util;

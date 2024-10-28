@@ -5,6 +5,11 @@ use idx::{token::Tokens, tokenizer::Tokenizer};
 #[derive(Debug)]
 pub struct Query<'a>(&'a str);
 
+// TODO:
+// - phrase match (exact and proximity)
+// - boolean match
+// - fuzzy search
+// - faceted search
 impl<'a> Query<'a> {
     #[inline]
     pub fn new(value: &'a str) -> Self {

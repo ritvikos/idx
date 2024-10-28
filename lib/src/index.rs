@@ -11,6 +11,7 @@ use crate::{
     core::{InvertedIndex, Store, TermCounter, TfIdf},
     rank::{Ranker, TfIdfRanker},
     reader::{IndexReader, ReaderContext},
+    score::{Score, TfIdfScorer},
     token::Tokens,
     writer::{IndexWriter, ResourceState, WriterContext},
 };
@@ -20,6 +21,9 @@ pub trait Indexer {
 
     fn new(capacity: usize, threshold: usize) -> Self;
     fn insert(&mut self, resource: Self::R, word_count: usize, tokens: &mut Tokens);
+
+    fn reader(&self) -> ReaderContext<'_, Self::R>;
+
     fn get_score(&self, term: &str) -> Option<Vec<TfIdf>>;
     fn get_resource(&self, index: usize) -> Option<Self::R>;
 }
@@ -38,6 +42,16 @@ pub struct Index<R: Clone + Debug> {
     pub capacity: usize,
     pub threshold: usize,
 }
+
+// impl<R: Clone + Debug> Index<R> {
+//     fn score(&self, term: &str) {
+//         let reader = self.core.reader();
+//         let context = ReaderContext::new(reader);
+
+//         let scorer = TfIdfScorer::new(&context);
+//         scorer.score(term);
+//     }
+// }
 
 impl<R: Clone + Debug> Indexer for Index<R> {
     type R = R;
@@ -91,6 +105,11 @@ impl<R: Clone + Debug> Indexer for Index<R> {
         let ctx = ReaderContext::new(reader);
 
         ctx.get_resource(index)
+    }
+
+    fn reader(&self) -> ReaderContext<'_, Self::R> {
+        let reader = self.core.reader();
+        ReaderContext::new(reader)
     }
 }
 

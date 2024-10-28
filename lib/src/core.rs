@@ -268,10 +268,10 @@ impl PartialEq for RefEntry {
 // a file, the frequency of a term in that file
 #[derive(Clone, Copy, Debug, Eq)]
 pub struct TfEntry {
-    /// Index associated with file.
+    /// Index associated with the resource.
     index: usize,
 
-    /// Frequency of term in the file.
+    /// Frequency of term in the document.
     frequency: Counter<usize>,
 }
 
