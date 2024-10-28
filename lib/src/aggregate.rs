@@ -1,38 +1,34 @@
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
 
-use hashbrown::{hash_map::Iter, HashMap};
-use num_traits::{Float, Unsigned};
+use hashbrown::hash_map::{HashMap, Iter};
 
-pub trait Aggregate<K: Unsigned, V: Float>: Debug {
-    type Iter<'a>: Iterator<Item = (&'a K, &'a V)>
+pub trait Aggregation: Debug {
+    type Key;
+    type Value;
+
+    type Iter<'a>: Iterator<Item = (&'a Self::Key, &'a Self::Value)>
     where
-        Self: 'a,
-        K: 'a,
-        V: 'a;
+        Self: 'a;
 
-    fn insert(&mut self, key: K, value: V);
+    fn insert(&mut self, key: Self::Key, value: Self::Value);
     fn iter(&self) -> Self::Iter<'_>;
 }
 
 #[derive(Debug)]
-pub struct Aggregator<A: Aggregate<K, V>, K: Unsigned, V: Float> {
+pub struct Aggregator<A: Aggregation> {
     inner: A,
-    _marker: PhantomData<(K, V)>,
 }
 
-impl<A: Aggregate<K, V>, K: Unsigned, V: Float> Aggregator<A, K, V> {
+impl<A: Aggregation> Aggregator<A> {
     pub fn new(strategy: A) -> Self {
-        Self {
-            inner: strategy,
-            _marker: PhantomData,
-        }
+        Self { inner: strategy }
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: A::Key, value: A::Value) {
         self.inner.insert(key, value);
     }
 
-    pub fn iter(&self) -> <A as Aggregate<K, V>>::Iter<'_> {
+    pub fn iter(&self) -> A::Iter<'_> {
         self.inner.iter()
     }
 }
@@ -56,10 +52,12 @@ impl HashAggregator {
     }
 }
 
-impl Aggregate<usize, f32> for HashAggregator {
-    type Iter<'a> = Iter<'a, usize, f32>;
+impl Aggregation for HashAggregator {
+    type Key = usize;
+    type Value = f32;
+    type Iter<'a> = Iter<'a, Self::Key, Self::Value>;
 
-    fn insert(&mut self, key: usize, value: f32) {
+    fn insert(&mut self, key: Self::Key, value: Self::Value) {
         self.inner
             .entry(key)
             .and_modify(|existing| *existing += value)

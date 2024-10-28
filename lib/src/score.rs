@@ -3,12 +3,12 @@ use std::{fmt::Debug, marker::PhantomData};
 use crate::{reader::ReaderContext, token::Token};
 
 pub trait Score<'a> {
-    type K;
-    type V;
-    type R: Clone + Debug;
+    type Item: Clone + Debug;
+    type Key;
+    type Value;
 
-    fn new(strategy: &'a ReaderContext<'a, Self::R>) -> Self;
-    fn score(&self, term: &str) -> Option<Vec<(Self::K, Self::V)>>;
+    fn new(strategy: &'a ReaderContext<'a, Self::Item>) -> Self;
+    fn score(&self, term: &str) -> Option<Vec<(Self::Key, Self::Value)>>;
 }
 
 pub struct Scorer<'a, S: Score<'a>> {
@@ -24,13 +24,13 @@ impl<'a, S: Score<'a>> Scorer<'a, S> {
         }
     }
 
-    pub fn score(&self, term: &str) -> Option<Vec<(S::K, S::V)>> {
+    pub fn score(&self, term: &str) -> Option<Vec<(S::Key, S::Value)>> {
         self.inner.score(term)
     }
 
     pub fn score_and_apply<F>(&mut self, mut f: F, tokens: impl IntoIterator<Item = Token>)
     where
-        F: FnMut(Vec<(S::K, S::V)>),
+        F: FnMut(Vec<(S::Key, S::Value)>),
     {
         tokens.into_iter().for_each(|token| {
             if let Some(score) = self.inner.score(&token) {
@@ -42,10 +42,8 @@ impl<'a, S: Score<'a>> Scorer<'a, S> {
     pub fn from_tokens(
         &self,
         tokens: impl Iterator<Item = Token>,
-    ) -> Vec<Option<Vec<(S::K, S::V)>>> {
-        tokens
-            .map(|token| self.inner.score(&token))
-            .collect::<Vec<Option<Vec<(S::K, S::V)>>>>()
+    ) -> Vec<Option<Vec<(S::Key, S::Value)>>> {
+        tokens.map(|token| self.inner.score(&token)).collect::<_>()
     }
 }
 
@@ -65,15 +63,15 @@ impl<R: Clone + Debug> TfIdfScorer<'_, R> {
 }
 
 impl<'a, R: Clone + Debug> Score<'a> for TfIdfScorer<'a, R> {
-    type K = usize;
-    type V = f32;
-    type R = R;
+    type Item = R;
+    type Key = usize;
+    type Value = f32;
 
     fn new(reader: &'a ReaderContext<'a, R>) -> Self {
         Self { reader }
     }
 
-    fn score(&self, term: &str) -> Option<Vec<(Self::K, Self::V)>> {
+    fn score(&self, term: &str) -> Option<Vec<(Self::Key, Self::Value)>> {
         let total_documents = self.reader.total_documents();
 
         self.reader.get_entry_with(term, |idf_entry| {

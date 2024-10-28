@@ -7,7 +7,6 @@ use idx::{
     core::Collection,
     index::Indexer,
     normalizer::NormalizerPipeline,
-    reader::ReaderContext,
     score::{Score, Scorer, TfIdfScorer},
     tokenizer::Tokenizer,
 };
