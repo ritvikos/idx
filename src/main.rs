@@ -1,7 +1,6 @@
 mod cli;
 mod descriptor;
 mod engine;
-mod query;
 
 extern crate clap;
 extern crate crossbeam_channel;
@@ -18,6 +17,7 @@ use idx::{
         replace::TokenReplacer,
         NormalizerPipeline, Stopwords,
     },
+    query::Query,
     tokenizer::{Standard, Tokenizer, Whitespace},
 };
 

@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 
-use crate::{descriptor::Descriptor, query::Query};
+use crate::descriptor::Descriptor;
 
 use idx::{
-    aggregate::{Aggregator, HashAggregator},
-    core::Collection,
+    aggregate::{Aggregator, HashAggregator, Order},
     index::Indexer,
     normalizer::NormalizerPipeline,
+    query::Query,
     score::{Score, Scorer, TfIdfScorer},
     tokenizer::Tokenizer,
 };
@@ -44,7 +44,7 @@ impl<I: Indexer> IdxFacade<I> {
         self.index.insert(resource, word_count, &mut tokens);
     }
 
-    pub fn get(&self, query: Query) -> Collection {
+    pub fn get(&self, query: Query) -> Vec<I::R> {
         let reader = self.index.reader();
 
         let mut tokenizer = self.tokenizer.clone();
@@ -55,9 +55,6 @@ impl<I: Indexer> IdxFacade<I> {
         if !self.pipeline.is_empty() {
             pipeline.run(&mut tokens);
         }
-
-        let capacity = tokens.count();
-        let collection = Collection::with_capacity(capacity);
 
         let hash_based = HashAggregator::new();
         let mut aggregator = Aggregator::new(hash_based);
@@ -74,13 +71,14 @@ impl<I: Indexer> IdxFacade<I> {
             tokens,
         );
 
-        aggregator.iter().for_each(|(index, score)| {
-            let resource = self.index.get_resource(*index).unwrap();
-            println!("{index} {score}: {resource:?}");
-        });
-
         // temporary
-        collection
+        // FIXME: create unified interface for aggregator
+        let sorted = aggregator.sort_by(Order::Descending);
+
+        sorted
+            .iter()
+            .filter_map(|(index, _)| self.index.get_resource(*index))
+            .collect::<Vec<_>>()
     }
 }
 
