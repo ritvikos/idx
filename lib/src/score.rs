@@ -2,7 +2,7 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{reader::ReaderContext, token::Token};
 
-pub trait Score<'a> {
+pub trait Score<'a>: Debug {
     type Item: Clone + Debug;
     type Key;
     type Value;
@@ -11,6 +11,7 @@ pub trait Score<'a> {
     fn score(&self, term: &str) -> Option<Vec<(Self::Key, Self::Value)>>;
 }
 
+#[derive(Debug)]
 pub struct Scorer<'a, S: Score<'a>> {
     inner: S,
     _marker: PhantomData<&'a S>,
@@ -47,6 +48,7 @@ impl<'a, S: Score<'a>> Scorer<'a, S> {
     }
 }
 
+#[derive(Debug)]
 pub struct TfIdfScorer<'a, R: Clone + Debug> {
     reader: &'a ReaderContext<'a, R>,
 }

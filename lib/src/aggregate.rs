@@ -2,6 +2,8 @@ use std::fmt::Debug;
 
 use hashbrown::hash_map::{HashMap, Iter};
 
+// TODO:
+// - add limit
 pub trait Aggregation: Debug {
     type Key;
     type Value;
@@ -12,6 +14,15 @@ pub trait Aggregation: Debug {
 
     fn insert(&mut self, key: Self::Key, value: Self::Value);
     fn iter(&self) -> Self::Iter<'_>;
+
+    // FIXME: create unified interface for aggregator
+    fn sort_by(&self, order: Order) -> Vec<(Self::Key, Self::Value)>;
+}
+
+#[derive(Debug)]
+pub enum Order {
+    Ascending,
+    Descending,
 }
 
 #[derive(Debug)]
@@ -30,6 +41,10 @@ impl<A: Aggregation> Aggregator<A> {
 
     pub fn iter(&self) -> A::Iter<'_> {
         self.inner.iter()
+    }
+
+    pub fn sort_by(&self, order: Order) -> Vec<(A::Key, A::Value)> {
+        self.inner.sort_by(order)
     }
 }
 
@@ -66,5 +81,17 @@ impl Aggregation for HashAggregator {
 
     fn iter(&self) -> Self::Iter<'_> {
         self.inner.iter()
+    }
+
+    fn sort_by(&self, order: Order) -> Vec<(Self::Key, Self::Value)> {
+        let mut items: Vec<(Self::Key, Self::Value)> =
+            self.inner.iter().map(|(&k, &v)| (k, v)).collect();
+
+        match order {
+            Order::Ascending => items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap()),
+            Order::Descending => items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()),
+        }
+
+        items
     }
 }

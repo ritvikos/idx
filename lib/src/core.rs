@@ -313,29 +313,6 @@ impl PartialEq for TfEntry {
     }
 }
 
-#[derive(Debug)]
-pub struct Collection {
-    pub inner: HashMap<usize, f32>,
-}
-
-impl Collection {
-    #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            inner: HashMap::with_capacity(capacity),
-        }
-    }
-
-    pub fn insert(&mut self, key: usize, value: f32) {
-        self.inner
-            .entry(key)
-            .and_modify(|v| {
-                *v = *v + value;
-            })
-            .or_insert(value);
-    }
-}
-
 #[derive(Debug, Default)]
 // pub struct TermCounter<K>
 // where

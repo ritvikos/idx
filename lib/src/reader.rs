@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use crate::core::{IdfEntry, InvertedIndex, Resource, Store, TermCounter};
 
+#[derive(Debug)]
 pub struct IndexReader<'r, R: Clone + Debug> {
     store: &'r Store<R>,
     index: &'r InvertedIndex,
@@ -54,6 +55,7 @@ impl<'r, R: Clone + Debug> IndexReader<'r, R> {
     }
 }
 
+#[derive(Debug)]
 pub struct ReaderContext<'rctx, R: Clone + Debug> {
     reader: IndexReader<'rctx, R>,
 }

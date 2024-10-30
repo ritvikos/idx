@@ -127,6 +127,5 @@ impl<'a, R: Clone + Debug> Ranker<'a, R> for TfIdfRanker<'a, R> {
                 })
                 .collect::<Vec<_>>()
         })
-        // .map(Field::from)
     }
 }

@@ -77,7 +77,7 @@ impl<I: Indexer> IdxFacade<I> {
 
         sorted
             .iter()
-            .filter_map(|(index, _)| self.index.get_resource(*index))
+            .filter_map(|(index, _)| self.index.get(*index))
             .collect::<Vec<_>>()
     }
 }
