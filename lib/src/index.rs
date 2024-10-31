@@ -78,9 +78,7 @@ impl<R: Clone + Debug> Indexer for Index<R> {
     }
 
     fn get(&self, index: usize) -> Option<R> {
-        let reader = self.core.reader();
-        let ctx = ReaderContext::new(reader);
-
+        let ctx = self.reader();
         ctx.get_resource(index)
     }
 

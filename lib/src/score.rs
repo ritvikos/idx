@@ -33,11 +33,11 @@ impl<'a, S: Score<'a>> Scorer<'a, S> {
     where
         F: FnMut(Vec<(S::Key, S::Value)>),
     {
-        tokens.into_iter().for_each(|token| {
+        for token in tokens {
             if let Some(score) = self.inner.score(&token) {
                 f(score)
             }
-        });
+        }
     }
 
     pub fn from_tokens(

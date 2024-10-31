@@ -56,17 +56,18 @@ impl<I: Indexer> IdxFacade<I> {
             pipeline.run(&mut tokens);
         }
 
-        let hash_based = HashAggregator::new();
-        let mut aggregator = Aggregator::new(hash_based);
+        let hash_aggregator = HashAggregator::new();
+        let mut aggregator = Aggregator::new(hash_aggregator);
 
         let tfidf_scorer = TfIdfScorer::new(&reader);
         let mut scorer = Scorer::new(tfidf_scorer);
 
+        // Vec<(index, score)>
         scorer.score_and_apply(
-            |score| {
-                score.iter().for_each(|score| {
+            |scores| {
+                for score in scores {
                     aggregator.insert(score.0, score.1);
-                });
+                }
             },
             tokens,
         );
@@ -108,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn test_indexer_and_engine() {
+    fn test_indexer_and_engine_basic() {
         let corpus = tiny_test_corpus();
         let tokenizer = Tokenizer::Standard(Standard::new());
 
