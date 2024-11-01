@@ -8,11 +8,13 @@ enum Pos {
 }
 
 pub struct Lemmatizer {
-    lookup: Lookup,
+    lookup: Lookup<Vec<(String, String)>>,
 }
 
-struct Lookup {
-    rules: HashMap<Pos, Vec<(String, String)>>,
-    index: HashMap<Pos, HashMap<String, String>>,
-    exceptions: HashMap<Pos, HashMap<String, String>>,
+type Map<V> = HashMap<Pos, V>;
+
+struct Lookup<R: IntoIterator<Item = (String, String)>> {
+    exceptions: Map<HashMap<String, String>>,
+    index: Map<HashMap<String, String>>,
+    rules: Map<R>,
 }
