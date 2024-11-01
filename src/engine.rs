@@ -195,9 +195,3 @@ mod tests {
         println!("collection: {collection:?}");
     }
 }
-
-// TODO: Demo
-// Stocks
-// webpages
-// research papers
-// ecommerce

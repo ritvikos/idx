@@ -2,6 +2,7 @@ pub mod case;
 pub mod punctuation;
 pub mod replace;
 pub mod stopwords;
+pub mod lemmatize;
 
 pub use stopwords::Stopwords;
 
