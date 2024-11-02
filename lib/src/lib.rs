@@ -1,5 +1,6 @@
 pub mod aggregate;
 pub mod core;
+pub mod distance;
 pub mod document;
 pub mod error;
 pub mod filter;

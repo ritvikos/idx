@@ -18,3 +18,5 @@ struct Lookup<R: IntoIterator<Item = (String, String)>> {
     index: Map<HashMap<String, String>>,
     rules: Map<R>,
 }
+
+impl<R: IntoIterator<Item = (String, String)>> Lookup<R> {}
