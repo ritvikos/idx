@@ -1,3 +1,5 @@
+// https://github.com/explosion/spaCy/blob/master/spacy/pipeline/lemmatizer.py
+
 use hashbrown::HashMap;
 
 enum Pos {
